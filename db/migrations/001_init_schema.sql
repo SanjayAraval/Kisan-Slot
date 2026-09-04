@@ -7,12 +7,15 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 -- Procurement centres.
 CREATE TABLE centres (
-    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    name        TEXT NOT NULL,
-    code        TEXT NOT NULL UNIQUE,
-    district    TEXT NOT NULL,
-    state       TEXT NOT NULL,
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name         TEXT NOT NULL,
+    code         TEXT NOT NULL UNIQUE,
+    centre_type  TEXT NOT NULL CHECK (centre_type IN ('apmc_mandi', 'pacs', 'ikp')),
+    district     TEXT NOT NULL,
+    state        TEXT NOT NULL,
+    latitude     NUMERIC(9, 6) NOT NULL,
+    longitude    NUMERIC(9, 6) NOT NULL,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 -- Land records mirrored from Dharani (mocked integration). Read-only from
@@ -32,40 +35,70 @@ CREATE TABLE land_records (
 );
 
 -- Registration confirms a pre-seeded land record; it is not data entry.
+-- land_record_id is nullable because a Dharani lookup can fail to find a
+-- match at all -- that has to be representable, not rejected at the door.
+-- is_tenant marks a farmer who cultivates land under someone else's
+-- record (land_records.farmer_name will differ from farmers.farmer_name).
 CREATE TABLE farmers (
-    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    land_record_id      UUID NOT NULL REFERENCES land_records(id),
-    phone               TEXT NOT NULL UNIQUE,
-    registered_channel  TEXT NOT NULL CHECK (registered_channel IN ('app', 'sms', 'ivr', 'counter')),
-    status              TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'suspended')),
-    registered_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+    id                         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    farmer_name                TEXT NOT NULL,
+    land_record_id             UUID REFERENCES land_records(id),
+    is_tenant                  BOOLEAN NOT NULL DEFAULT false,
+    phone                      TEXT NOT NULL UNIQUE,
+    bank_account_number        TEXT,
+    bank_ifsc                  TEXT,
+    bank_account_holder_name   TEXT,
+    last_season_dbt_status     TEXT CHECK (last_season_dbt_status IN ('success', 'failed')),
+    registered_channel         TEXT NOT NULL CHECK (registered_channel IN ('app', 'sms', 'ivr', 'counter')),
+    status                     TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'suspended')),
+    registered_at              TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 -- Raw operational parameters that feed the capacity engine, one row per
 -- centre per service date. Nothing here is a slot count -- the engine
 -- derives that as min() across these constraints.
+--
+-- yard_capacity_tonnes is the yard's total physical capacity;
+-- undispatched_tonnes is stock already sitting in it from prior days.
+-- The capacity engine is given (yard_capacity_tonnes - undispatched_tonnes)
+-- as its yardCapacityTonnes input -- it only ever sees space actually
+-- available, not the yard's nameplate size.
 CREATE TABLE centre_daily_inputs (
-    id                              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    centre_id                       UUID NOT NULL REFERENCES centres(id),
-    service_date                    DATE NOT NULL,
+    id                                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    centre_id                           UUID NOT NULL REFERENCES centres(id),
+    service_date                        DATE NOT NULL,
 
-    weighbridge_operating_minutes   INTEGER NOT NULL CHECK (weighbridge_operating_minutes > 0),
-    weighbridge_avg_cycle_minutes   NUMERIC(6, 2) NOT NULL CHECK (weighbridge_avg_cycle_minutes > 0),
+    weighing_mode                       TEXT NOT NULL DEFAULT 'weighbridge'
+                                             CHECK (weighing_mode IN ('weighbridge', 'platform')),
+    weighbridge_operating_minutes       INTEGER NOT NULL CHECK (weighbridge_operating_minutes > 0),
+    weighbridge_avg_cycle_minutes       NUMERIC(6, 2) CHECK (weighbridge_avg_cycle_minutes > 0),
+    seconds_per_bag                     NUMERIC(6, 2) CHECK (seconds_per_bag > 0),
+    avg_bags_per_lot                    INTEGER CHECK (avg_bags_per_lot > 0),
 
-    hamali_gang_count               INTEGER NOT NULL CHECK (hamali_gang_count >= 0),
-    hamali_bags_per_gang_per_day    INTEGER NOT NULL CHECK (hamali_bags_per_gang_per_day >= 0),
+    hamali_gang_count                   INTEGER NOT NULL CHECK (hamali_gang_count >= 0),
+    hamali_bags_per_gang_per_day        INTEGER NOT NULL CHECK (hamali_bags_per_gang_per_day >= 0),
 
-    bags_per_truck                  INTEGER NOT NULL CHECK (bags_per_truck > 0),
-    gunny_bags_available             INTEGER NOT NULL CHECK (gunny_bags_available >= 0),
+    bags_per_truck                      INTEGER NOT NULL CHECK (bags_per_truck > 0),
+    gunny_bags_available                 INTEGER NOT NULL CHECK (gunny_bags_available >= 0),
 
-    truck_evacuation_capacity       INTEGER NOT NULL CHECK (truck_evacuation_capacity >= 0),
+    truck_evacuation_capacity           INTEGER NOT NULL CHECK (truck_evacuation_capacity >= 0),
 
-    yard_capacity_tonnes            NUMERIC(8, 2) NOT NULL CHECK (yard_capacity_tonnes > 0),
-    avg_truck_load_tonnes           NUMERIC(6, 2) NOT NULL CHECK (avg_truck_load_tonnes > 0),
+    yard_capacity_tonnes                NUMERIC(8, 2) NOT NULL CHECK (yard_capacity_tonnes > 0),
+    undispatched_tonnes                 NUMERIC(8, 2) NOT NULL DEFAULT 0 CHECK (undispatched_tonnes >= 0),
+    avg_truck_load_tonnes               NUMERIC(6, 2) NOT NULL CHECK (avg_truck_load_tonnes > 0),
 
-    created_at                      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    moisture_meter_count                INTEGER NOT NULL DEFAULT 0 CHECK (moisture_meter_count >= 0),
+    moisture_tests_per_meter_per_day    INTEGER NOT NULL DEFAULT 0 CHECK (moisture_tests_per_meter_per_day >= 0),
 
-    UNIQUE (centre_id, service_date)
+    created_at                          TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+    UNIQUE (centre_id, service_date),
+    CHECK (
+        (weighing_mode = 'weighbridge' AND weighbridge_avg_cycle_minutes IS NOT NULL)
+        OR
+        (weighing_mode = 'platform' AND seconds_per_bag IS NOT NULL AND avg_bags_per_lot IS NOT NULL)
+    ),
+    CHECK (undispatched_tonnes <= yard_capacity_tonnes)
 );
 
 CREATE INDEX idx_centre_daily_inputs_service_date ON centre_daily_inputs (service_date);
@@ -75,6 +108,15 @@ CREATE INDEX idx_centre_daily_inputs_service_date ON centre_daily_inputs (servic
 -- This is capacity, not a bookable time slot -- everything referencing a
 -- centre's day-level capacity points here, and carries no capacity fields
 -- of its own.
+--
+-- bags_capacity / bags_booked are the actual concurrency-safe reservation
+-- ledger: bookable_capacity (trucks/day) x bags_per_truck gives
+-- bags_capacity once, at compute time; every booking atomically claims
+-- its bags via UPDATE ... SET bags_booked = bags_booked + $n WHERE
+-- bags_booked + $n <= bags_capacity. That single guarded UPDATE is what
+-- makes two concurrent bookings for the last slot resolve to exactly one
+-- winner -- no explicit row lock needed, and the CHECK below is a second
+-- line of defense against ever going over.
 CREATE TABLE centre_day (
     id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     centre_id             UUID NOT NULL REFERENCES centres(id),
@@ -84,14 +126,18 @@ CREATE TABLE centre_day (
     walk_in_reserved       INTEGER NOT NULL CHECK (walk_in_reserved >= 0),
     bookable_capacity     INTEGER NOT NULL CHECK (bookable_capacity >= 0),
 
+    bags_capacity         NUMERIC(10, 2) NOT NULL CHECK (bags_capacity >= 0),
+    bags_booked           NUMERIC(10, 2) NOT NULL DEFAULT 0 CHECK (bags_booked >= 0),
+
     binding_constraint    TEXT NOT NULL CHECK (binding_constraint IN (
-                               'weighbridge', 'hamali', 'gunny', 'truckEvacuation', 'yardSpace'
+                               'weighbridge', 'hamali', 'gunny', 'truckEvacuation', 'yardSpace', 'moistureTesting'
                            )),
     constraint_breakdown  JSONB NOT NULL,
 
     computed_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
 
-    UNIQUE (centre_id, service_date)
+    UNIQUE (centre_id, service_date),
+    CHECK (bags_booked <= bags_capacity)
 );
 
 CREATE INDEX idx_centre_day_service_date ON centre_day (service_date);
@@ -100,15 +146,23 @@ CREATE INDEX idx_centre_day_service_date ON centre_day (service_date);
 -- they belong to centre_day alone. is_walk_in draws from the reserved
 -- walk-in pool rather than the pre-booked pool.
 CREATE TABLE bookings (
-    id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    centre_day_id    UUID NOT NULL REFERENCES centre_day(id),
-    farmer_id        UUID NOT NULL REFERENCES farmers(id),
-    booking_channel  TEXT NOT NULL CHECK (booking_channel IN ('app', 'sms', 'ivr', 'counter')),
-    is_walk_in       BOOLEAN NOT NULL DEFAULT false,
-    status           TEXT NOT NULL DEFAULT 'booked' CHECK (status IN (
-                          'booked', 'checked_in', 'completed', 'cancelled', 'no_show'
-                      )),
-    booked_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+    id                           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    centre_day_id                UUID NOT NULL REFERENCES centre_day(id),
+    farmer_id                    UUID NOT NULL REFERENCES farmers(id),
+    token                        TEXT NOT NULL UNIQUE,
+    -- Farmer-declared intent at booking time -- not the weighed actual,
+    -- which lands on the j_form. Compared against a land-record-derived
+    -- yield estimate to flag implausible declarations.
+    declared_quantity_quintals   NUMERIC(8, 2) CHECK (declared_quantity_quintals > 0),
+    -- What this booking actually claimed against centre_day.bags_booked
+    -- (declared_quantity_quintals * 2.5, snapshotted at booking time).
+    bags_reserved                NUMERIC(8, 2) NOT NULL CHECK (bags_reserved > 0),
+    booking_channel              TEXT NOT NULL CHECK (booking_channel IN ('app', 'sms', 'ivr', 'counter')),
+    is_walk_in                   BOOLEAN NOT NULL DEFAULT false,
+    status                       TEXT NOT NULL DEFAULT 'booked' CHECK (status IN (
+                                      'booked', 'checked_in', 'completed', 'cancelled', 'no_show'
+                                  )),
+    booked_at                    TIMESTAMPTZ NOT NULL DEFAULT now(),
 
     UNIQUE (centre_day_id, farmer_id)
 );
