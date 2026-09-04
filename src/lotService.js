@@ -8,8 +8,17 @@ function round(value, decimals = 2) {
   return Math.round(value * factor) / factor;
 }
 
+// node-postgres parses a DATE column into a Date built from LOCAL-time
+// components (year/month/day), not UTC ones -- toISOString() on it then
+// shifts to the previous day in any timezone ahead of UTC (IST included).
+// getFullYear/getMonth/getDate read back the same local components pg
+// used to build it, so this always agrees with what's actually stored.
 function toDateString(value) {
-  return value instanceof Date ? value.toISOString().slice(0, 10) : String(value).slice(0, 10);
+  if (!(value instanceof Date)) return String(value).slice(0, 10);
+  const y = value.getFullYear();
+  const m = String(value.getMonth() + 1).padStart(2, '0');
+  const d = String(value.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
 }
 
 // A "lot" is a booking viewed through its physical-processing lifecycle

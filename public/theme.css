@@ -1,0 +1,91 @@
+/* Shared design tokens for the Kisan Slot screens (declaration, dashboard,
+   farmer). Colour is semantic only: ink/paper are structure and text;
+   gold/green/red exist ONLY to signal warning/success/danger state --
+   never used decoratively. Plain static CSS, no build step. */
+
+:root {
+  --ink: #16241C;
+  --paper: #EDF0EC;
+  --paper-raised: #FFFFFF;
+  --gold: #B8891B;
+  --green: #2E7D4F;
+  --red: #A32B21;
+
+  --ink-06: rgba(22, 36, 28, 0.06);
+  --ink-10: rgba(22, 36, 28, 0.10);
+  --ink-16: rgba(22, 36, 28, 0.16);
+  --ink-30: rgba(22, 36, 28, 0.30);
+  --ink-60: rgba(22, 36, 28, 0.64);
+
+  --gold-bg: rgba(184, 137, 27, 0.14);
+  --gold-border: rgba(184, 137, 27, 0.55);
+  --gold-ink: #7A5A12;
+
+  --green-bg: rgba(46, 125, 79, 0.12);
+  --green-border: rgba(46, 125, 79, 0.5);
+
+  --red-bg: rgba(163, 43, 33, 0.10);
+  --red-border: rgba(163, 43, 33, 0.5);
+
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif;
+  --radius: 10px;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+}
+
+body {
+  font-family: var(--font-sans);
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Status badges -- the only place gold/green/red should appear as fills. */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+  padding: 0.22em 0.65em;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+.badge-success { background: var(--green-bg); color: var(--green); border: 1px solid var(--green-border); }
+.badge-warning { background: var(--gold-bg); color: var(--gold-ink); border: 1px solid var(--gold-border); }
+.badge-danger  { background: var(--red-bg);  color: var(--red);  border: 1px solid var(--red-border); }
+.badge-neutral { background: var(--ink-06);  color: var(--ink-60); border: 1px solid var(--ink-10); }
+
+/* Callout boxes -- info/warning/error framing shared by all three screens. */
+.callout {
+  border-radius: var(--radius);
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--ink-10);
+  background: var(--paper-raised);
+}
+.callout-success { background: var(--green-bg); border-color: var(--green-border); }
+.callout-warning { background: var(--gold-bg); border-color: var(--gold-border); }
+.callout-danger  { background: var(--red-bg);  border-color: var(--red-border); }
+
+/* Buttons -- green is the one and only "go" colour; ink/paper for
+   everything neutral; red only for a destructive/cancel action. */
+.btn {
+  font-family: inherit;
+  font-size: 1rem;
+  font-weight: 600;
+  border-radius: var(--radius);
+  padding: 0.7rem 1.1rem;
+  border: 1px solid transparent;
+  cursor: pointer;
+  line-height: 1.2;
+}
+.btn:disabled { cursor: default; opacity: 0.55; }
+.btn-primary { background: var(--green); color: var(--paper-raised); }
+.btn-secondary { background: var(--paper-raised); color: var(--ink); border-color: var(--ink-16); }
+.btn-danger { background: var(--paper-raised); color: var(--red); border-color: var(--red-border); }

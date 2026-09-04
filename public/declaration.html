@@ -3,38 +3,36 @@
 <head>
 <meta charset="utf-8" />
 <title>Tonight's Declaration</title>
+<link rel="stylesheet" href="/theme.css" />
 <style>
-  body { font-family: system-ui, sans-serif; max-width: 640px; margin: 2rem auto; padding: 0 1rem; color: #1a1a1a; }
+  body { max-width: 640px; margin: 2rem auto; padding: 0 1rem; }
   h1 { font-size: 1.3rem; margin-bottom: 0.25rem; }
-  .sub { color: #666; margin-top: 0; margin-bottom: 1.5rem; font-size: 0.9rem; }
-  fieldset { border: 1px solid #ddd; border-radius: 8px; padding: 1rem; margin-bottom: 1rem; }
+  .sub { color: var(--ink-60); margin-top: 0; margin-bottom: 1.5rem; font-size: 0.9rem; }
+  fieldset { border: 1px solid var(--ink-10); border-radius: var(--radius); padding: 1rem; margin-bottom: 1rem; }
   legend { padding: 0 0.4rem; font-weight: 600; }
-  label { display: block; font-size: 0.85rem; color: #444; margin-bottom: 0.2rem; }
-  select, input[type="date"] { padding: 0.4rem; font-size: 1rem; width: 100%; box-sizing: border-box; }
+  label { display: block; font-size: 0.85rem; color: var(--ink-60); margin-bottom: 0.2rem; }
+  select, input[type="date"] { padding: 0.4rem; font-size: 1rem; width: 100%; box-sizing: border-box; border: 1px solid var(--ink-16); border-radius: 6px; background: var(--paper-raised); color: var(--ink); }
   .row { display: flex; gap: 1rem; margin-bottom: 0.75rem; }
   .row > div { flex: 1; }
   .field { margin-bottom: 0.9rem; }
   .stepper { display: flex; align-items: center; gap: 0.5rem; }
-  .stepper button { width: 2.2rem; height: 2.2rem; font-size: 1.2rem; cursor: pointer; border: 1px solid #ccc; background: #f7f7f7; border-radius: 6px; }
-  .stepper button:hover { background: #ececec; }
-  .stepper input { width: 6rem; text-align: center; font-size: 1rem; padding: 0.4rem; }
+  .stepper button { width: 2.2rem; height: 2.2rem; font-size: 1.2rem; cursor: pointer; border: 1px solid var(--ink-16); background: var(--ink-06); border-radius: 6px; color: var(--ink); }
+  .stepper button:hover { background: var(--ink-10); }
+  .stepper input { width: 6rem; text-align: center; font-size: 1rem; padding: 0.4rem; border: 1px solid var(--ink-16); border-radius: 6px; }
   .actions { display: flex; gap: 0.6rem; margin-top: 1rem; }
-  button.primary { background: #1a5f3f; color: white; border: none; padding: 0.6rem 1rem; border-radius: 6px; font-size: 1rem; cursor: pointer; }
-  button.primary:disabled { background: #9bb; cursor: default; }
-  button.secondary { background: white; border: 1px solid #999; padding: 0.6rem 1rem; border-radius: 6px; font-size: 1rem; cursor: pointer; }
-  .infra { font-size: 0.85rem; color: #555; background: #f7f7f7; border-radius: 6px; padding: 0.6rem 0.8rem; margin-bottom: 1rem; }
+  .infra { font-size: 0.85rem; color: var(--ink-60); background: var(--ink-06); border-radius: 6px; padding: 0.6rem 0.8rem; margin-bottom: 1rem; }
   .msg { padding: 0.6rem 0.8rem; border-radius: 6px; margin-bottom: 1rem; font-size: 0.9rem; }
-  .msg.error { background: #fdecea; color: #7a1e14; }
-  .msg.info { background: #eef4ff; color: #1a3a7a; }
+  .msg.error { background: var(--red-bg); color: var(--red); border: 1px solid var(--red-border); }
+  .msg.info { background: var(--gold-bg); color: var(--gold-ink); border: 1px solid var(--gold-border); }
   .result h2 { font-size: 1.1rem; margin-bottom: 0.5rem; }
   .stat-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.6rem; margin-bottom: 1rem; }
-  .stat { background: #f7f7f7; border-radius: 6px; padding: 0.6rem 0.8rem; }
+  .stat { background: var(--ink-06); border-radius: 6px; padding: 0.6rem 0.8rem; }
   .stat .n { font-size: 1.4rem; font-weight: 700; }
-  .stat .l { font-size: 0.78rem; color: #666; }
-  .action { background: #fff7e6; border: 1px solid #f0c36d; border-radius: 6px; padding: 0.7rem 0.9rem; font-size: 0.92rem; }
+  .stat .l { font-size: 0.78rem; color: var(--ink-60); }
+  .action { background: var(--gold-bg); border: 1px solid var(--gold-border); border-radius: 6px; padding: 0.7rem 0.9rem; font-size: 0.92rem; color: var(--gold-ink); }
   table.breakdown { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin-top: 0.75rem; }
-  table.breakdown td, table.breakdown th { padding: 0.3rem 0.5rem; border-bottom: 1px solid #eee; text-align: left; }
-  tr.binding { background: #fff3cd; font-weight: 600; }
+  table.breakdown td, table.breakdown th { padding: 0.3rem 0.5rem; border-bottom: 1px solid var(--ink-10); text-align: left; }
+  tr.binding { background: var(--gold-bg); font-weight: 600; }
 </style>
 </head>
 <body>
@@ -212,7 +210,9 @@ function App() {
     h('h1', null, "Tonight's Declaration"),
     h('p', { className: 'sub' }, "Declare tomorrow's operating inputs and see the recomputed capacity."),
     h('p', { style: { fontSize: '0.85rem', marginTop: '-0.75rem', marginBottom: '1rem' } },
-      h('a', { href: '/dashboard.html', style: { color: '#1a5f3f' } }, 'District officer dashboard →')
+      h('a', { href: '/dashboard.html', style: { color: 'var(--green)' } }, 'District officer dashboard →'),
+      ' · ',
+      h('a', { href: '/farmer.html', style: { color: 'var(--green)' } }, 'Farmer screen →')
     ),
 
     error && h('div', { className: 'msg error' }, error),
@@ -231,7 +231,7 @@ function App() {
           h('input', { type: 'date', value: date, onChange: (e) => setDate(e.target.value) })
         )
       ),
-      h('button', { className: 'secondary', onClick: loadDeclaration, disabled: loading || !centreId || !date },
+      h('button', { className: 'btn btn-secondary', onClick: loadDeclaration, disabled: loading || !centreId || !date },
         loading ? 'Loading…' : 'Load declaration'
       )
     ),
@@ -266,7 +266,7 @@ function App() {
         onChange: (v) => setInputs({ ...inputs, truckEvacuationCapacity: v }),
       }),
       h('div', { className: 'actions' },
-        h('button', { className: 'primary', onClick: submitDeclaration, disabled: submitting },
+        h('button', { className: 'btn btn-primary', onClick: submitDeclaration, disabled: submitting },
           submitting ? 'Submitting…' : 'Submit declaration'
         )
       )

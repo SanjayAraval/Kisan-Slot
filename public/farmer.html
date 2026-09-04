@@ -1,0 +1,547 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<title>Kisan Slot — Farmer</title>
+<link rel="stylesheet" href="/theme.css" />
+<style>
+  body { max-width: 480px; margin: 0 auto; padding: 1rem 1rem 3rem; font-size: 17px; line-height: 1.45; }
+  h1 { font-size: 1.25rem; margin: 0.6rem 0 0.1rem; }
+  h2 { font-size: 1.05rem; margin: 0 0 0.6rem; }
+  .sub { color: var(--ink-60); margin: 0 0 1.1rem; font-size: 0.92rem; }
+  .nav { font-size: 0.85rem; margin-bottom: 0.6rem; }
+  .nav a { color: var(--green); }
+
+  label { display: block; font-size: 0.88rem; font-weight: 600; color: var(--ink); margin-bottom: 0.3rem; }
+  select, input[type="number"], input[type="date"], input[type="search"] {
+    width: 100%; font-size: 1rem; padding: 0.8rem 0.9rem; border: 1px solid var(--ink-16);
+    border-radius: var(--radius); background: var(--paper-raised); color: var(--ink); box-sizing: border-box;
+    min-height: 3rem;
+  }
+  .field { margin-bottom: 1rem; }
+
+  .btn { width: 100%; min-height: 3.1rem; font-size: 1.05rem; }
+  .btn-row { display: flex; gap: 0.6rem; }
+  .btn-row .btn { flex: 1; }
+
+  .card {
+    background: var(--paper-raised); border: 1px solid var(--ink-10); border-radius: var(--radius);
+    padding: 1rem 1.1rem; margin-bottom: 1rem;
+  }
+  .card .row { display: flex; justify-content: space-between; gap: 0.75rem; padding: 0.4rem 0; border-bottom: 1px solid var(--ink-06); }
+  .card .row:last-child { border-bottom: none; }
+  .card .row .k { color: var(--ink-60); font-size: 0.9rem; }
+  .card .row .v { font-weight: 700; text-align: right; }
+
+  .tabs { display: flex; gap: 0.4rem; margin-bottom: 1.1rem; }
+  .tab {
+    flex: 1; text-align: center; padding: 0.75rem 0.4rem; border-radius: var(--radius);
+    border: 1px solid var(--ink-16); background: var(--paper-raised); color: var(--ink);
+    font-size: 0.92rem; font-weight: 700; cursor: pointer; min-height: 3rem;
+  }
+  .tab.active { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+  .tab:disabled { opacity: 0.4; cursor: default; }
+
+  .empty { color: var(--ink-60); font-size: 0.92rem; text-align: center; padding: 1.2rem 0.5rem; }
+  .loading { color: var(--ink-60); font-size: 0.92rem; padding: 0.5rem 0; }
+
+  .token-display { text-align: center; padding: 0.8rem 0; }
+  .token-display .t { font-size: 1.6rem; font-weight: 800; letter-spacing: 0.02em; }
+
+  .timeline { list-style: none; margin: 0; padding: 0; }
+  .timeline li { display: flex; gap: 0.75rem; padding: 0.65rem 0; border-bottom: 1px solid var(--ink-06); }
+  .timeline li:last-child { border-bottom: none; }
+  .dot { width: 1.5rem; height: 1.5rem; border-radius: 50%; flex: none; margin-top: 0.1rem; display: flex; align-items: center; justify-content: center; font-size: 0.85rem; font-weight: 800; }
+  .dot.done { background: var(--green); color: var(--paper-raised); }
+  .dot.pending { background: var(--ink-06); color: var(--ink-30); border: 1px solid var(--ink-16); }
+  .stage-label { font-weight: 700; }
+  .stage-at { font-size: 0.85rem; color: var(--ink-60); }
+  .stage-note { font-size: 0.82rem; color: var(--ink-30); }
+
+  .deduction-row { display: flex; justify-content: space-between; padding: 0.35rem 0; font-size: 0.92rem; }
+  .deduction-row .desc { color: var(--ink-60); font-size: 0.8rem; }
+  .net-payable { text-align: center; padding: 0.9rem 0 0.4rem; }
+  .net-payable .amount { font-size: 1.9rem; font-weight: 800; color: var(--green); }
+  .net-payable .rate { font-size: 0.85rem; color: var(--ink-60); margin-top: 0.2rem; }
+
+  .alt-card { border: 1px solid var(--ink-10); border-radius: var(--radius); padding: 0.8rem 0.9rem; margin-bottom: 0.6rem; background: var(--paper-raised); }
+  .alt-card .h { font-weight: 700; margin-bottom: 0.15rem; }
+  .alt-card .d { font-size: 0.85rem; color: var(--ink-60); margin-bottom: 0.5rem; }
+
+  .link-btn { background: none; border: none; color: var(--green); font-size: 0.9rem; font-weight: 600; cursor: pointer; padding: 0.4rem 0; text-decoration: underline; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+<script>
+'use strict';
+const h = React.createElement;
+const { useState, useEffect, useMemo, useCallback } = React;
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+// Never throws on an HTTP-level response -- 404 (nothing on file yet) and
+// 400 (validation) are normal, expected outcomes on this screen, not
+// exceptions. Only a network failure or unparsable body throws.
+async function fetchJson(url, options) {
+  const res = await fetch(url, options);
+  const body = await res.json().catch(() => ({}));
+  return { httpStatus: res.status, body };
+}
+
+function todayPlusOne() {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  return d.toISOString().slice(0, 10);
+}
+
+function formatINR(value) {
+  if (value === null || value === undefined) return '—';
+  return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(value);
+}
+
+function formatDate(value) {
+  if (!value) return null;
+  const d = new Date(`${value}T00:00:00`);
+  return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+function formatDateTime(value) {
+  if (!value) return null;
+  const d = new Date(value);
+  return d.toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+}
+
+const VERDICT_BADGE = { accept: 'badge-success', cut: 'badge-warning', reject: 'badge-danger' };
+const VERDICT_LABEL = { accept: 'Accepted', cut: 'Accepted with cut', reject: 'Rejected' };
+
+// ---------------------------------------------------------------------------
+// IDENTIFY
+// ---------------------------------------------------------------------------
+
+function FarmerPicker({ farmers, farmerId, onPick }) {
+  const [query, setQuery] = useState('');
+
+  const options = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const matches = q
+      ? farmers.filter((f) => f.name.toLowerCase().includes(q) || (f.phone || '').includes(q))
+      : farmers;
+    return matches.slice(0, 50);
+  }, [farmers, query]);
+
+  return h('div', null,
+    h('div', { className: 'field' },
+      h('label', null, 'Search your name or phone number'),
+      h('input', {
+        type: 'search', value: query, placeholder: 'e.g. Ravi or 98765...',
+        onChange: (e) => setQuery(e.target.value),
+      })
+    ),
+    h('div', { className: 'field' },
+      h('label', null, 'Pick your name (demo login)'),
+      h('select', { value: farmerId, onChange: (e) => onPick(e.target.value) },
+        h('option', { value: '' }, farmers.length === 0 ? 'Loading…' : `Select — ${options.length} shown`),
+        options.map((f) => h('option', { key: f.id, value: f.id }, `${f.name} — ${f.phone}`))
+      )
+    )
+  );
+}
+
+function OfficerReviewCard({ farmer }) {
+  return h('div', { className: 'callout callout-warning' },
+    h('div', { className: 'badge badge-warning', style: { marginBottom: '0.6rem' } }, 'Needs officer review'),
+    h('p', { style: { margin: '0 0 0.5rem', fontWeight: 700 } },
+      farmer.hasLandRecord
+        ? `${farmer.name}'s registration is linked to another person's land record (tenant cultivation).`
+        : `We could not find a matching land record for ${farmer.name}.`
+    ),
+    h('p', { style: { margin: 0, color: 'var(--ink-60)', fontSize: '0.92rem' } },
+      'This is not a rejection. An officer will call back to confirm your details before you can book online. ' +
+      'You can still visit the centre in person in the meantime.'
+    )
+  );
+}
+
+function FarmerProfileCard({ farmer }) {
+  return h('div', { className: 'card' },
+    h('div', { className: 'row' }, h('span', { className: 'k' }, 'Name'), h('span', { className: 'v' }, farmer.name)),
+    h('div', { className: 'row' }, h('span', { className: 'k' }, 'Phone'), h('span', { className: 'v' }, farmer.phone)),
+    h('div', { className: 'row' }, h('span', { className: 'k' }, 'Village'), h('span', { className: 'v' }, farmer.village || '—')),
+    h('div', { className: 'row' },
+      h('span', { className: 'k' }, 'Land'),
+      h('span', { className: 'v' }, `${farmer.extentAcres} ac · Sy. ${farmer.surveyNumber}`)
+    ),
+    h('div', { className: 'row' },
+      h('span', { className: 'k' }, 'Permitted this season'),
+      h('span', { className: 'v' }, `${farmer.permittedQuantityQuintals} q`)
+    ),
+    h('div', { className: 'row' },
+      h('span', { className: 'k' }, 'Bank account'),
+      h('span', { className: 'v' }, farmer.bankAccountLast4 ? `•••• ${farmer.bankAccountLast4}` : '—')
+    )
+  );
+}
+
+// ---------------------------------------------------------------------------
+// BOOK
+// ---------------------------------------------------------------------------
+
+function AlternativeCard({ title, detail, onBook }) {
+  return h('div', { className: 'alt-card' },
+    h('div', { className: 'h' }, title),
+    h('div', { className: 'd' }, detail),
+    h('button', { className: 'btn btn-secondary', onClick: onBook }, 'Book this instead')
+  );
+}
+
+function BookScreen({ farmer, centres, onSwitchTab }) {
+  const [quintals, setQuintals] = useState('');
+  const [centreId, setCentreId] = useState(centres[0] ? centres[0].id : '');
+  const [date, setDate] = useState(todayPlusOne());
+  const [submitting, setSubmitting] = useState(false);
+  const [result, setResult] = useState(null); // { httpStatus, body }
+  const [networkError, setNetworkError] = useState(null);
+
+  useEffect(() => {
+    if (!centreId && centres[0]) setCentreId(centres[0].id);
+  }, [centres]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function submit(overrides = {}) {
+    const payload = {
+      farmerId: farmer.id,
+      quintals: Number(overrides.quintals !== undefined ? overrides.quintals : quintals),
+      centreId: overrides.centreId || centreId,
+      date: overrides.date || date,
+    };
+    if (!payload.quintals || payload.quintals <= 0 || !payload.centreId || !payload.date) {
+      setResult({ httpStatus: 400, body: { status: 'BAD_REQUEST', errors: ['Enter a quantity, centre, and date.'] } });
+      return;
+    }
+    setSubmitting(true);
+    setNetworkError(null);
+    try {
+      const res = await fetchJson('/api/bookings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      setResult(res);
+      if (overrides.centreId) setCentreId(overrides.centreId);
+      if (overrides.date) setDate(overrides.date);
+    } catch (err) {
+      setNetworkError(err.message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  function reset() {
+    setResult(null);
+  }
+
+  const status = result && result.body && result.body.status;
+
+  if (status === 'BOOKED') {
+    const b = result.body.booking;
+    return h('div', { className: 'callout callout-success' },
+      h('div', { className: 'token-display' },
+        h('div', { className: 'badge badge-success' }, 'Booked'),
+        h('div', { className: 't' }, b.token)
+      ),
+      h('div', { className: 'card', style: { marginTop: '0.5rem' } },
+        h('div', { className: 'row' }, h('span', { className: 'k' }, 'Quantity'), h('span', { className: 'v' }, `${b.quintals} q`)),
+        h('div', { className: 'row' }, h('span', { className: 'k' }, 'Date'), h('span', { className: 'v' }, formatDate(b.date))),
+        h('div', { className: 'row' }, h('span', { className: 'k' }, 'Slots left after this'), h('span', { className: 'v' }, result.body.remainingSlots))
+      ),
+      h('p', { style: { fontSize: '0.9rem', color: 'var(--ink-60)' } }, 'Bring this token when you arrive at the gate.'),
+      h('div', { className: 'btn-row' },
+        h('button', { className: 'btn btn-primary', onClick: () => onSwitchTab('status') }, 'See status'),
+        h('button', { className: 'btn btn-secondary', onClick: reset }, 'Book another')
+      )
+    );
+  }
+
+  if (status === 'NEEDS_OFFICER_REVIEW') {
+    return h('div', { className: 'callout callout-warning' },
+      h('div', { className: 'badge badge-warning', style: { marginBottom: '0.6rem' } }, 'Needs officer review'),
+      h('p', { style: { margin: '0 0 0.5rem', fontWeight: 700 } }, result.body.message),
+      result.body.landEstimateQuintals !== undefined && h('p', { style: { margin: '0 0 0.5rem', fontSize: '0.9rem', color: 'var(--ink-60)' } },
+        `Land-record estimate: ${result.body.landEstimateQuintals} q. You declared: ${result.body.requestedQuintals} q.`
+      ),
+      h('p', { style: { margin: 0, fontSize: '0.9rem', color: 'var(--ink-60)' } },
+        'This is not a rejection -- an officer will call to confirm before this booking is placed.'
+      ),
+      h('button', { className: 'btn btn-secondary', style: { marginTop: '0.8rem' }, onClick: reset }, 'Try a different quantity')
+    );
+  }
+
+  if (status === 'NO_CAPACITY') {
+    const alt = result.body.alternatives || {};
+    return h('div', null,
+      h('div', { className: 'callout callout-warning', style: { marginBottom: '1rem' } },
+        h('p', { style: { margin: '0 0 0.3rem', fontWeight: 700 } }, "Don't load your trolley yet"),
+        h('p', { style: { margin: 0, fontSize: '0.9rem', color: 'var(--ink-60)' } },
+          "This slot is full for that centre and date. It's not a rejection -- here's where there's room instead."
+        )
+      ),
+      alt.nextDateAtThisCentre && h(AlternativeCard, {
+        title: `Same centre, ${formatDate(alt.nextDateAtThisCentre.date)}`,
+        detail: `${alt.nextDateAtThisCentre.remainingSlots} slots open`,
+        onBook: () => submit({ date: alt.nextDateAtThisCentre.date }),
+      }),
+      (alt.nearbyCentres || []).map((c) => h(AlternativeCard, {
+        key: c.centreId,
+        title: `${c.name} (${c.distanceKm} km away)`,
+        detail: `${c.remainingSlots} slots open today`,
+        onBook: () => submit({ centreId: c.centreId }),
+      })),
+      (!alt.nextDateAtThisCentre && (alt.nearbyCentres || []).length === 0) &&
+        h('p', { className: 'empty' }, 'No alternatives found nearby -- please try again tomorrow or contact your centre.'),
+      h('button', { className: 'btn btn-secondary', style: { marginTop: '0.4rem' }, onClick: reset }, 'Back')
+    );
+  }
+
+  if (status === 'NOT_FOUND' || status === 'BAD_REQUEST') {
+    const message = result.body.message || (result.body.errors || []).join(', ') || 'Something went wrong.';
+    return h('div', { className: 'callout callout-danger' },
+      h('p', { style: { margin: '0 0 0.6rem', fontWeight: 700 } }, message),
+      h('button', { className: 'btn btn-secondary', onClick: reset }, 'Try again')
+    );
+  }
+
+  return h('div', null,
+    networkError && h('div', { className: 'callout callout-danger', style: { marginBottom: '1rem' } }, networkError),
+    h('div', { className: 'field' },
+      h('label', null, 'Quantity (quintals)'),
+      h('input', {
+        type: 'number', min: 0, step: '0.1', value: quintals, placeholder: 'e.g. 40',
+        onChange: (e) => setQuintals(e.target.value),
+      })
+    ),
+    h('div', { className: 'field' },
+      h('label', null, 'Centre'),
+      h('select', { value: centreId, onChange: (e) => setCentreId(e.target.value) },
+        centres.map((c) => h('option', { key: c.id, value: c.id }, `${c.name} (${c.code})`))
+      )
+    ),
+    h('div', { className: 'field' },
+      h('label', null, 'Date'),
+      h('input', { type: 'date', value: date, onChange: (e) => setDate(e.target.value) })
+    ),
+    h('button', {
+      className: 'btn btn-primary', onClick: () => submit(), disabled: submitting || centres.length === 0,
+    }, submitting ? 'Booking…' : 'Book slot')
+  );
+}
+
+// ---------------------------------------------------------------------------
+// STATUS
+// ---------------------------------------------------------------------------
+
+function MoistureCard({ moisture }) {
+  if (!moisture) {
+    return h('div', { className: 'card' },
+      h('p', { style: { margin: 0, color: 'var(--ink-60)', fontSize: '0.9rem' } }, 'Awaiting moisture test at the gate.')
+    );
+  }
+  return h('div', { className: 'card' },
+    h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' } },
+      h('span', { style: { fontWeight: 700 } }, 'Moisture test'),
+      h('span', { className: `badge ${VERDICT_BADGE[moisture.verdict] || 'badge-neutral'}` }, VERDICT_LABEL[moisture.verdict] || moisture.verdict)
+    ),
+    h('div', { className: 'row' }, h('span', { className: 'k' }, 'Reading'), h('span', { className: 'v' }, `${moisture.meanMoisture}% (limit ${moisture.limitPct}%)`)),
+    h('div', { className: 'row' }, h('span', { className: 'k' }, 'Meter'), h('span', { className: 'v' }, moisture.meterId)),
+    h('div', { className: 'row' }, h('span', { className: 'k' }, 'Calibrated'), h('span', { className: 'v' }, formatDate(moisture.calibrationDate)))
+  );
+}
+
+function Timeline({ stages }) {
+  return h('ul', { className: 'timeline' },
+    stages.map((s) => h('li', { key: s.key },
+      h('span', { className: `dot ${s.done ? 'done' : 'pending'}` }, s.done ? '✓' : ''),
+      h('div', null,
+        h('div', { className: 'stage-label' }, s.label),
+        s.done
+          ? h('div', { className: 'stage-at' }, formatDateTime(s.at))
+          : h('div', { className: 'stage-note' }, s.key === 'payment' ? 'Released after the bill is finalised' : 'Pending')
+      )
+    ))
+  );
+}
+
+function StatusScreen({ farmer, onSwitchTab }) {
+  const [state, setState] = useState({ loading: true, data: null, notFound: false, error: null });
+
+  useEffect(() => {
+    let cancelled = false;
+    setState({ loading: true, data: null, notFound: false, error: null });
+    fetchJson(`/api/farmers/${farmer.id}/status`)
+      .then(({ httpStatus, body }) => {
+        if (cancelled) return;
+        if (httpStatus === 404) return setState({ loading: false, data: null, notFound: true, error: null });
+        if (httpStatus !== 200) return setState({ loading: false, data: null, notFound: false, error: body.message || 'Could not load status.' });
+        setState({ loading: false, data: body, notFound: false, error: null });
+      })
+      .catch((err) => !cancelled && setState({ loading: false, data: null, notFound: false, error: err.message }));
+    return () => { cancelled = true; };
+  }, [farmer.id]);
+
+  if (state.loading) return h('p', { className: 'loading' }, 'Loading status…');
+  if (state.error) return h('div', { className: 'callout callout-danger' }, state.error);
+  if (state.notFound) {
+    return h('div', null,
+      h('p', { className: 'empty' }, 'No bookings yet.'),
+      h('button', { className: 'btn btn-primary', onClick: () => onSwitchTab('book') }, 'Book a slot')
+    );
+  }
+
+  const { booking, stages, moisture } = state.data;
+  return h('div', null,
+    h('div', { className: 'card' },
+      h('div', { className: 'row' }, h('span', { className: 'k' }, 'Token'), h('span', { className: 'v' }, booking.token)),
+      h('div', { className: 'row' }, h('span', { className: 'k' }, 'Centre'), h('span', { className: 'v' }, `${booking.centreName} (${booking.centreCode})`)),
+      h('div', { className: 'row' }, h('span', { className: 'k' }, 'Date'), h('span', { className: 'v' }, formatDate(booking.serviceDate))),
+      h('div', { className: 'row' }, h('span', { className: 'k' }, 'Quantity'), h('span', { className: 'v' }, `${booking.declaredQuantityQuintals} q`))
+    ),
+    h('h2', null, 'Progress'),
+    h('div', { className: 'card' }, h(Timeline, { stages })),
+    h('h2', null, 'Moisture'),
+    h(MoistureCard, { moisture })
+  );
+}
+
+// ---------------------------------------------------------------------------
+// J-FORM
+// ---------------------------------------------------------------------------
+
+function JFormScreen({ farmer, onSwitchTab }) {
+  const [state, setState] = useState({ loading: true, data: null, notFound: false, error: null });
+
+  useEffect(() => {
+    let cancelled = false;
+    setState({ loading: true, data: null, notFound: false, error: null });
+    fetchJson(`/api/farmers/${farmer.id}/jform`)
+      .then(({ httpStatus, body }) => {
+        if (cancelled) return;
+        if (httpStatus === 404) return setState({ loading: false, data: null, notFound: true, error: null });
+        if (httpStatus !== 200) return setState({ loading: false, data: null, notFound: false, error: body.message || 'Could not load the bill.' });
+        setState({ loading: false, data: body, notFound: false, error: null });
+      })
+      .catch((err) => !cancelled && setState({ loading: false, data: null, notFound: false, error: err.message }));
+    return () => { cancelled = true; };
+  }, [farmer.id]);
+
+  if (state.loading) return h('p', { className: 'loading' }, 'Loading bill…');
+  if (state.error) return h('div', { className: 'callout callout-danger' }, state.error);
+  if (state.notFound) {
+    return h('div', null,
+      h('p', { className: 'empty' }, 'No bill raised yet -- this appears once your lot is weighed and finalised.'),
+      h('button', { className: 'btn btn-secondary', onClick: () => onSwitchTab('status') }, 'Check status')
+    );
+  }
+
+  const j = state.data;
+  return h('div', null,
+    h('div', { className: 'card' },
+      h('div', { className: 'row' }, h('span', { className: 'k' }, 'J-Form'), h('span', { className: 'v' }, j.jFormNumber)),
+      h('div', { className: 'row' }, h('span', { className: 'k' }, 'Issued'), h('span', { className: 'v' }, formatDateTime(j.issuedAt))),
+      h('div', { className: 'row' }, h('span', { className: 'k' }, 'Net weight'), h('span', { className: 'v' }, `${j.quintalsProcured} q`)),
+      h('div', { className: 'row' }, h('span', { className: 'k' }, 'MSP rate'), h('span', { className: 'v' }, `${formatINR(j.mspRate)}/q`)),
+      h('div', { className: 'row' }, h('span', { className: 'k' }, 'Gross value'), h('span', { className: 'v' }, formatINR(j.grossAmount)))
+    ),
+    h('h2', null, 'Deductions'),
+    h('div', { className: 'card' },
+      j.deductions.length === 0
+        ? h('p', { style: { margin: 0, color: 'var(--ink-60)', fontSize: '0.9rem' } }, 'No deductions.')
+        : j.deductions.map((d, i) => h('div', { className: 'deduction-row', key: i },
+            h('span', null, d.type, d.description ? h('div', { className: 'desc' }, d.description) : null),
+            h('span', null, `− ${formatINR(d.amount)}`)
+          )),
+      j.deductions.length > 0 && h('div', { className: 'deduction-row', style: { borderTop: '1px solid var(--ink-10)', marginTop: '0.3rem', paddingTop: '0.5rem', fontWeight: 700 } },
+        h('span', null, 'Total deductions'),
+        h('span', null, `− ${formatINR(j.totalDeductions)}`)
+      )
+    ),
+    h('div', { className: 'callout callout-success' },
+      h('div', { className: 'net-payable' },
+        h('div', { className: 'amount' }, formatINR(j.netPayable)),
+        h('div', { className: 'rate' }, `Net payable · ${formatINR(j.effectiveRatePerQuintal)}/q effective (MSP ${formatINR(j.mspRate)}/q)`)
+      )
+    )
+  );
+}
+
+// ---------------------------------------------------------------------------
+// App
+// ---------------------------------------------------------------------------
+
+function App() {
+  const [farmers, setFarmers] = useState([]);
+  const [farmerId, setFarmerId] = useState('');
+  const [farmer, setFarmer] = useState(null);
+  const [farmerLoading, setFarmerLoading] = useState(false);
+  const [centres, setCentres] = useState([]);
+  const [tab, setTab] = useState('book');
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    fetchJson('/api/farmers').then(({ body }) => setFarmers(Array.isArray(body) ? body : [])).catch((err) => setError(err.message));
+    fetchJson('/api/centres').then(({ body }) => setCentres(Array.isArray(body) ? body : [])).catch((err) => setError(err.message));
+  }, []);
+
+  const pickFarmer = useCallback((id) => {
+    setFarmerId(id);
+    setFarmer(null);
+    setTab('book');
+    if (!id) return;
+    setFarmerLoading(true);
+    fetchJson(`/api/farmers/${id}`)
+      .then(({ httpStatus, body }) => {
+        if (httpStatus === 200) setFarmer(body);
+        else setError(body.message || 'Could not load farmer.');
+      })
+      .catch((err) => setError(err.message))
+      .finally(() => setFarmerLoading(false));
+  }, []);
+
+  return h('div', null,
+    h('h1', null, 'Kisan Slot'),
+    h('p', { className: 'sub' }, 'Book your procurement slot and track your lot.'),
+    h('div', { className: 'nav' },
+      h('a', { href: '/declaration.html' }, 'Officer declaration'), ' · ',
+      h('a', { href: '/dashboard.html' }, 'District dashboard')
+    ),
+
+    error && h('div', { className: 'callout callout-danger', style: { marginBottom: '1rem' } }, error),
+
+    h(FarmerPicker, { farmers, farmerId, onPick: pickFarmer }),
+
+    farmerLoading && h('p', { className: 'loading' }, 'Loading your details…'),
+
+    farmer && farmer.needsOfficerReview && h(OfficerReviewCard, { farmer }),
+
+    farmer && !farmer.needsOfficerReview && h('div', null,
+      h(FarmerProfileCard, { farmer }),
+      h('div', { className: 'tabs' },
+        h('button', { className: `tab ${tab === 'book' ? 'active' : ''}`, onClick: () => setTab('book') }, 'Book'),
+        h('button', { className: `tab ${tab === 'status' ? 'active' : ''}`, onClick: () => setTab('status') }, 'Status'),
+        h('button', { className: `tab ${tab === 'jform' ? 'active' : ''}`, onClick: () => setTab('jform') }, 'J-Form')
+      ),
+      tab === 'book' && h(BookScreen, { farmer, centres, onSwitchTab: setTab }),
+      tab === 'status' && h(StatusScreen, { farmer, onSwitchTab: setTab }),
+      tab === 'jform' && h(JFormScreen, { farmer, onSwitchTab: setTab })
+    )
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(h(App));
+</script>
+</body>
+</html>

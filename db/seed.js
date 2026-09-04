@@ -2,7 +2,7 @@
 
 const crypto = require('crypto');
 const { computeDailyCapacity } = require('../src/capacityEngine');
-const { YIELD_QUINTALS_PER_ACRE, BAGS_PER_QUINTAL, OVER_DECLARE_CAP_MULTIPLIER } = require('../src/constants');
+const { YIELD_QUINTALS_PER_ACRE, BAGS_PER_QUINTAL, OVER_DECLARE_CAP_MULTIPLIER, KG_PER_BAG } = require('../src/constants');
 const { createRng } = require('./seed/random');
 const { generateVillageNames, generatePersonName, generateFatherName } = require('./seed/names');
 const { SHARED_BASELINE, CENTRES } = require('./seed/centres');
@@ -15,6 +15,17 @@ const DISTRICT = 'Medak';
 const STATE = 'Telangana';
 const SERVICE_DATES = 7; // seed a week of centre-day capacity
 const START_DATE = '2026-09-04';
+
+// The district dashboard's gunny-cover figure needs real burn history --
+// completed lots with weighments -- for the 3 days before the dashboard
+// date, or its rolling burn rate has nothing to divide by. Backfilled
+// below, immediately before START_DATE.
+const BURN_HISTORY_DAYS = 3;
+// The two busiest APMC mandis: sized (see buildBurnHistory) to have burned
+// through most of their gunny stock during a peak-season stretch, so they
+// trip the dashboard's under-1.5-day alert. Every other centre gets a
+// comfortable multi-day cushion.
+const AT_RISK_CENTRE_CODES = new Set(['MDK-APMC-01', 'MDK-APMC-02']);
 
 const TOTAL_FARMERS = 5000;
 const UNMATCHED_RATIO = 0.15;
@@ -331,6 +342,134 @@ function buildBookings(rng, centreDays, farmers) {
 }
 
 // ---------------------------------------------------------------------------
+// Burn history (backfilled completed lots, for the dashboard's gunny-cover
+// burn rate)
+// ---------------------------------------------------------------------------
+
+// Backfills BURN_HISTORY_DAYS days of completed lots (with weighments)
+// immediately before START_DATE, one synthetic centre_day per day per
+// centre. Sized backwards from each centre's already-generated
+// START_DATE+1 gunny stock, so the resulting days-of-cover lands where we
+// want it -- a couple of centres genuinely low, the rest comfortable --
+// rather than picking a burn number and hoping the ratio comes out right.
+// Bookings are real farmer-sized draws (same land-estimate math as
+// buildBookings), packed against a per-day target instead of a capacity
+// ceiling, and marked 'completed' with a same-day weighment whose net_kg
+// matches bags_reserved exactly (KG_PER_BAG), so gunny cover derived from
+// them is internally consistent top to bottom.
+function buildBurnHistory(rng, centres, centreDailyInputs, farmers) {
+  const candidates = rng.shuffle(farmers.filter((f) => f.landRecordId !== null));
+  let cursor = 0;
+
+  const historicalCentreDays = [];
+  const historicalBookings = [];
+  const historicalWeighments = [];
+  const burnSummary = [];
+
+  const tomorrow = addDays(START_DATE, 1);
+
+  for (const centre of centres) {
+    const tomorrowInput = centreDailyInputs.find((d) => d.centreId === centre.id && d.serviceDate === tomorrow);
+    const gunnyTomorrow = tomorrowInput.gunnyBagsAvailable;
+
+    const atRisk = AT_RISK_CENTRE_CODES.has(centre.code);
+    // Comfortable margin under the dashboard's 1.5-day alert threshold --
+    // packing bookings against a target only approximates it, so this
+    // needs slack, not a target that grazes the boundary.
+    const targetCoverDays = atRisk ? rng.float(0.5, 1.1) : rng.float(3, 9);
+    const avgDailyBurn = Math.max(200, Math.round(gunnyTomorrow / targetCoverDays));
+
+    let totalBurned = 0;
+
+    for (let dayOffset = BURN_HISTORY_DAYS; dayOffset >= 1; dayOffset--) {
+      const serviceDate = addDays(START_DATE, -dayOffset);
+      const dailyTarget = jitterInt(rng, avgDailyBurn, 0.15);
+      const centreDayId = uuid();
+
+      let remainingTarget = dailyTarget;
+      let sequence = 0;
+      let dayBurned = 0;
+
+      while (cursor < candidates.length && remainingTarget > avgDailyBurn * 0.05) {
+        const farmer = candidates[cursor];
+        const landEstimate = round(farmer.linkedExtentAcres * YIELD_QUINTALS_PER_ACRE, 2);
+        const declaredQuantity = round(landEstimate * rng.float(0.7, 1.15), 2);
+        const bagsReserved = round(declaredQuantity * BAGS_PER_QUINTAL, 2);
+
+        if (bagsReserved > remainingTarget * 1.5) {
+          cursor += 1; // too big for what's left today -- try the next farmer rather than stall
+          continue;
+        }
+
+        cursor += 1;
+        sequence += 1;
+        remainingTarget -= bagsReserved;
+        dayBurned += bagsReserved;
+
+        const dateCompact = serviceDate.replace(/-/g, '');
+        const bookingId = uuid();
+        const netKg = round(bagsReserved * KG_PER_BAG, 2);
+
+        historicalBookings.push({
+          id: bookingId,
+          centreDayId,
+          farmerId: farmer.id,
+          token: `${centre.code}-${dateCompact}-${String(sequence).padStart(3, '0')}`,
+          declaredQuantityQuintals: declaredQuantity,
+          bagsReserved,
+          bookingChannel: rng.pickWeighted(CHANNEL_WEIGHTS),
+          status: 'completed',
+          checkedInAt: `${serviceDate}T06:30:00Z`,
+          completedAt: `${serviceDate}T15:00:00Z`,
+        });
+
+        historicalWeighments.push({
+          id: uuid(),
+          bookingId,
+          mode: 'weighbridge',
+          grossKg: netKg,
+          tareKg: 0,
+          netKg,
+        });
+      }
+
+      historicalCentreDays.push({
+        id: centreDayId,
+        centreId: centre.id,
+        centreName: centre.name,
+        centreCode: centre.code,
+        serviceDate,
+        bagsPerTruck: SHARED_BASELINE.bagsPerTruck,
+        totalCapacity: Math.ceil(dayBurned / SHARED_BASELINE.bagsPerTruck),
+        walkInReserved: 0,
+        bookableCapacity: Math.ceil(dayBurned / SHARED_BASELINE.bagsPerTruck),
+        bagsCapacity: dayBurned,
+        bagsBooked: dayBurned,
+        // Not really "gunny-bound" for every historical day -- these rows
+        // exist purely to carry burn history, not a real capacity
+        // breakdown -- but binding_constraint is a required enum column,
+        // and gunny is the one this backfill is actually about.
+        bindingConstraint: 'gunny',
+        constraintBreakdown: {},
+      });
+
+      totalBurned += dayBurned;
+    }
+
+    const avgBurnActual = round(totalBurned / BURN_HISTORY_DAYS, 1);
+    burnSummary.push({
+      centreName: centre.name,
+      centreCode: centre.code,
+      avgDailyBurn: avgBurnActual,
+      gunnyTomorrow,
+      daysOfCover: avgBurnActual > 0 ? round(gunnyTomorrow / avgBurnActual, 1) : null,
+    });
+  }
+
+  return { historicalCentreDays, historicalBookings, historicalWeighments, burnSummary };
+}
+
+// ---------------------------------------------------------------------------
 // DB writes
 // ---------------------------------------------------------------------------
 
@@ -353,7 +492,7 @@ async function batchInsert(client, table, columns, rows, getValues, chunkSize = 
   }
 }
 
-async function writeToDatabase({ centres, centreDailyInputs, centreDays, landRecords, farmers, bookings }) {
+async function writeToDatabase({ centres, centreDailyInputs, centreDays, landRecords, farmers, bookings, weighments }) {
   const { Client } = require('pg');
   const client = new Client();
   await client.connect();
@@ -434,9 +573,23 @@ async function writeToDatabase({ centres, centreDailyInputs, centreDays, landRec
     await batchInsert(
       client,
       'bookings',
-      ['id', 'centre_day_id', 'farmer_id', 'token', 'declared_quantity_quintals', 'bags_reserved', 'booking_channel'],
+      [
+        'id', 'centre_day_id', 'farmer_id', 'token', 'declared_quantity_quintals', 'bags_reserved', 'booking_channel',
+        'status', 'checked_in_at', 'completed_at',
+      ],
       bookings,
-      (b) => [b.id, b.centreDayId, b.farmerId, b.token, b.declaredQuantityQuintals, b.bagsReserved, b.bookingChannel]
+      (b) => [
+        b.id, b.centreDayId, b.farmerId, b.token, b.declaredQuantityQuintals, b.bagsReserved, b.bookingChannel,
+        b.status || 'booked', b.checkedInAt || null, b.completedAt || null,
+      ]
+    );
+
+    await batchInsert(
+      client,
+      'lot_weighments',
+      ['id', 'booking_id', 'mode', 'gross_kg', 'tare_kg', 'net_kg'],
+      weighments,
+      (w) => [w.id, w.bookingId, w.mode, w.grossKg, w.tareKg, w.netKg]
     );
 
     await client.query('COMMIT');
@@ -452,7 +605,7 @@ async function writeToDatabase({ centres, centreDailyInputs, centreDays, landRec
 // Summary
 // ---------------------------------------------------------------------------
 
-function printSummary({ centres, centreDays, landRecords, farmers, bookings, overDeclaredCount }) {
+function printSummary({ centres, centreDays, landRecords, farmers, bookings, overDeclaredCount, burnSummary }) {
   const line = (s = '') => console.log(s);
 
   line('='.repeat(72));
@@ -502,6 +655,12 @@ function printSummary({ centres, centreDays, landRecords, farmers, bookings, ove
   line(`\nBookings: ${bookings.length}`);
   line(`  Declared quantity > 1.3x land-record estimate: ${overDeclaredCount} (${((overDeclaredCount / bookings.length) * 100).toFixed(1)}%)`);
 
+  line(`\nBurn history backfill (${BURN_HISTORY_DAYS} days before ${START_DATE}), for the district dashboard's gunny cover:`);
+  for (const b of burnSummary) {
+    const flag = b.daysOfCover !== null && b.daysOfCover < 1.5 ? '  [AT RISK]' : '';
+    line(`    ${b.centreName.padEnd(24)} avg burn: ${String(b.avgDailyBurn).padStart(6)} bags/day   gunny (${addDays(START_DATE, 1)}): ${String(b.gunnyTomorrow).padStart(6)}   days of cover: ${b.daysOfCover}${flag}`);
+  }
+
   line('\n' + '='.repeat(72));
 }
 
@@ -515,15 +674,32 @@ async function main() {
   const centres = buildCentres(rng);
   const { centreDailyInputs, centreDays } = buildCentreDays(rng, centres);
   const { landRecords, farmers } = buildFarmersAndLandRecords(rng, centres);
+  const { historicalCentreDays, historicalBookings, historicalWeighments, burnSummary } = buildBurnHistory(
+    rng,
+    centres,
+    centreDailyInputs,
+    farmers
+  );
   const { bookings, overDeclaredCount } = buildBookings(rng, centreDays, farmers);
+
+  const allCentreDays = [...centreDays, ...historicalCentreDays];
+  const allBookings = [...bookings, ...historicalBookings];
 
   if (DRY_RUN) {
     console.log(`[dry run, seed=${SEED}] generated in memory, nothing written to the database.\n`);
   } else {
-    await writeToDatabase({ centres, centreDailyInputs, centreDays, landRecords, farmers, bookings });
+    await writeToDatabase({
+      centres,
+      centreDailyInputs,
+      centreDays: allCentreDays,
+      landRecords,
+      farmers,
+      bookings: allBookings,
+      weighments: historicalWeighments,
+    });
   }
 
-  printSummary({ centres, centreDays, landRecords, farmers, bookings, overDeclaredCount });
+  printSummary({ centres, centreDays, landRecords, farmers, bookings, overDeclaredCount, burnSummary });
 }
 
 main().catch((err) => {

@@ -7,6 +7,7 @@ const { computeCentreDayCapacity } = require('./capacityService');
 const { createLotRoutes } = require('./lotRoutes');
 const { createDeclarationRoutes } = require('./declarationRoutes');
 const { createDashboardRoutes } = require('./dashboardRoutes');
+const { createFarmerRoutes } = require('./farmerRoutes');
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -119,6 +120,7 @@ function createApp(pool) {
   app.use('/api/lots', createLotRoutes(pool));
   app.use('/api', createDeclarationRoutes(pool));
   app.use('/api', createDashboardRoutes(pool));
+  app.use('/api', createFarmerRoutes(pool));
 
   // eslint-disable-next-line no-unused-vars
   app.use((err, req, res, next) => {
