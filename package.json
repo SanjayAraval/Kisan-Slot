@@ -1,0 +1,13 @@
+{
+  "name": "sih-kisan-slot",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Procurement slot booking and queue management for MSP paddy centres.",
+  "main": "src/capacityEngine.js",
+  "scripts": {
+    "test": "jest"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0"
+  }
+}
