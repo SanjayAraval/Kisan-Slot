@@ -1,9 +1,11 @@
 'use strict';
 
+const path = require('path');
 const express = require('express');
 const { attemptBooking, findAlternatives } = require('./bookingService');
 const { computeCentreDayCapacity } = require('./capacityService');
 const { createLotRoutes } = require('./lotRoutes');
+const { createDeclarationRoutes } = require('./declarationRoutes');
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -25,6 +27,7 @@ function validateBookingBody(body) {
 function createApp(pool) {
   const app = express();
   app.use(express.json());
+  app.use(express.static(path.join(__dirname, '..', 'public')));
 
   app.post('/api/bookings', async (req, res, next) => {
     const errors = validateBookingBody(req.body || {});
@@ -113,6 +116,7 @@ function createApp(pool) {
   });
 
   app.use('/api/lots', createLotRoutes(pool));
+  app.use('/api', createDeclarationRoutes(pool));
 
   // eslint-disable-next-line no-unused-vars
   app.use((err, req, res, next) => {

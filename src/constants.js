@@ -36,4 +36,15 @@ module.exports = {
   // named constant since this is a kg-denominated conversion, not a
   // quintal-denominated one.
   KG_PER_BAG: 40,
+
+  // What the "Tonight" declaration screen tells the officer to do about
+  // whichever constraint the engine reports as binding.
+  RECOMMENDED_ACTIONS: {
+    weighbridge: 'Weighing is the bottleneck. Extend operating hours or open a second weighing point if one is available.',
+    hamali: 'Labour gangs are the bottleneck. Call in additional gangs or extend working hours.',
+    gunny: 'Gunny bag stock is the bottleneck. Request an emergency bag delivery from the district store.',
+    truckEvacuation: 'Truck evacuation is the bottleneck. Arrange additional trucks to clear stock faster.',
+    yardSpace: 'Yard space is the bottleneck. Expedite dispatch of undispatched stock to free up room.',
+    moistureTesting: 'Moisture testing is the bottleneck. Add meters or testing staff (unusual -- double-check the inputs).',
+  },
 };

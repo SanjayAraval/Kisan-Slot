@@ -35,6 +35,70 @@ async function loadDailyInputs(client, centreId, serviceDate) {
   return result.rows[0] || null;
 }
 
+// Raw stored values, camelCased, for round-tripping through an API --
+// unlike toEngineInput, yardCapacityTonnes here is the nameplate size,
+// not (size - undispatched); the caller gets both fields back as-stored.
+function toApiInputs(row) {
+  return {
+    weighingMode: row.weighing_mode,
+    weighbridgeOperatingMinutes: Number(row.weighbridge_operating_minutes),
+    weighbridgeAvgCycleMinutes: row.weighbridge_avg_cycle_minutes === null ? null : Number(row.weighbridge_avg_cycle_minutes),
+    secondsPerBag: row.seconds_per_bag === null ? null : Number(row.seconds_per_bag),
+    avgBagsPerLot: row.avg_bags_per_lot === null ? null : Number(row.avg_bags_per_lot),
+    hamaliGangCount: Number(row.hamali_gang_count),
+    hamaliBagsPerGangPerDay: Number(row.hamali_bags_per_gang_per_day),
+    bagsPerTruck: Number(row.bags_per_truck),
+    gunnyBagsAvailable: Number(row.gunny_bags_available),
+    truckEvacuationCapacity: Number(row.truck_evacuation_capacity),
+    yardCapacityTonnes: Number(row.yard_capacity_tonnes),
+    undispatchedTonnes: Number(row.undispatched_tonnes),
+    avgTruckLoadTonnes: Number(row.avg_truck_load_tonnes),
+    moistureMeterCount: Number(row.moisture_meter_count),
+    moistureTestsPerMeterPerDay: Number(row.moisture_tests_per_meter_per_day),
+  };
+}
+
+// Upserts the night's declared operating inputs for a centre/date -- a
+// genuine correction (the officer can re-declare before the night is
+// out), not append-only like a J-Form. id is generated client-side; see
+// upsertCentreDay's comment for why.
+async function upsertDailyInputs(client, centreId, serviceDate, inputs) {
+  const result = await client.query(
+    `INSERT INTO centre_daily_inputs (
+       id, centre_id, service_date, weighing_mode,
+       weighbridge_operating_minutes, weighbridge_avg_cycle_minutes, seconds_per_bag, avg_bags_per_lot,
+       hamali_gang_count, hamali_bags_per_gang_per_day, bags_per_truck, gunny_bags_available,
+       truck_evacuation_capacity, yard_capacity_tonnes, undispatched_tonnes, avg_truck_load_tonnes,
+       moisture_meter_count, moisture_tests_per_meter_per_day
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+     ON CONFLICT (centre_id, service_date) DO UPDATE SET
+       weighing_mode = EXCLUDED.weighing_mode,
+       weighbridge_operating_minutes = EXCLUDED.weighbridge_operating_minutes,
+       weighbridge_avg_cycle_minutes = EXCLUDED.weighbridge_avg_cycle_minutes,
+       seconds_per_bag = EXCLUDED.seconds_per_bag,
+       avg_bags_per_lot = EXCLUDED.avg_bags_per_lot,
+       hamali_gang_count = EXCLUDED.hamali_gang_count,
+       hamali_bags_per_gang_per_day = EXCLUDED.hamali_bags_per_gang_per_day,
+       bags_per_truck = EXCLUDED.bags_per_truck,
+       gunny_bags_available = EXCLUDED.gunny_bags_available,
+       truck_evacuation_capacity = EXCLUDED.truck_evacuation_capacity,
+       yard_capacity_tonnes = EXCLUDED.yard_capacity_tonnes,
+       undispatched_tonnes = EXCLUDED.undispatched_tonnes,
+       avg_truck_load_tonnes = EXCLUDED.avg_truck_load_tonnes,
+       moisture_meter_count = EXCLUDED.moisture_meter_count,
+       moisture_tests_per_meter_per_day = EXCLUDED.moisture_tests_per_meter_per_day
+     RETURNING id`,
+    [
+      crypto.randomUUID(), centreId, serviceDate, inputs.weighingMode,
+      inputs.weighbridgeOperatingMinutes, inputs.weighbridgeAvgCycleMinutes, inputs.secondsPerBag, inputs.avgBagsPerLot,
+      inputs.hamaliGangCount, inputs.hamaliBagsPerGangPerDay, inputs.bagsPerTruck, inputs.gunnyBagsAvailable,
+      inputs.truckEvacuationCapacity, inputs.yardCapacityTonnes, inputs.undispatchedTonnes, inputs.avgTruckLoadTonnes,
+      inputs.moistureMeterCount, inputs.moistureTestsPerMeterPerDay,
+    ]
+  );
+  return result.rows[0].id;
+}
+
 // Computes today's authoritative capacity straight from
 // centre_daily_inputs via the real capacity engine -- never trusts a
 // possibly-stale centre_day snapshot for this. Returns null if the centre
@@ -87,4 +151,11 @@ async function upsertCentreDay(client, centreId, serviceDate, capacity) {
   return result.rows[0];
 }
 
-module.exports = { toEngineInput, loadDailyInputs, computeCentreDayCapacity, upsertCentreDay };
+module.exports = {
+  toEngineInput,
+  toApiInputs,
+  loadDailyInputs,
+  computeCentreDayCapacity,
+  upsertCentreDay,
+  upsertDailyInputs,
+};
