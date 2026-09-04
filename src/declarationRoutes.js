@@ -127,6 +127,7 @@ function createDeclarationRoutes(pool) {
         bookableCapacity: capacity.engineResult.bookableCapacity,
         walkInReserved: capacity.engineResult.walkInReserved,
         bindingConstraint: capacity.engineResult.bindingConstraint,
+        bindingConstraints: capacity.engineResult.bindingConstraints,
         constraints: capacity.engineResult.constraints,
         recommendedAction: RECOMMENDED_ACTIONS[capacity.engineResult.bindingConstraint] || null,
       });

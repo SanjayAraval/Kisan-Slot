@@ -119,23 +119,27 @@ function StatCard(props) {
 
 function ResultPanel({ result }) {
   if (!result) return null;
-  const label = CONSTRAINT_LABELS[result.bindingConstraint] || result.bindingConstraint;
+  // bindingConstraints holds every constraint tied at the minimum, in the
+  // engine's deterministic CONSTRAINT_ORDER -- bindingConstraint is just
+  // its first entry. Fall back to the singular field for older responses.
+  const tied = result.bindingConstraints || [result.bindingConstraint];
+  const label = tied.map((key) => CONSTRAINT_LABELS[key] || key).join(' & ');
   return h('div', { className: 'result' },
     h('h2', null, 'Recomputed capacity'),
     h('div', { className: 'stat-grid' },
-      h(StatCard, { value: result.totalCapacity, label: 'Total capacity (trucks/day)' }),
+      h(StatCard, { value: result.totalCapacity, label: 'Total capacity (lots/day)' }),
       h(StatCard, { value: result.bookableCapacity, label: 'Bookable slots' }),
       h(StatCard, { value: result.walkInReserved, label: 'Walk-in reserve' }),
-      h(StatCard, { value: label, label: 'Binding constraint' })
+      h(StatCard, { value: label, label: tied.length > 1 ? 'Binding constraints (tied)' : 'Binding constraint' })
     ),
     result.recommendedAction && h('div', { className: 'action' },
       h('strong', null, 'Recommended action: '), result.recommendedAction
     ),
     h('table', { className: 'breakdown' },
-      h('thead', null, h('tr', null, h('th', null, 'Constraint'), h('th', null, 'Trucks/day it supports'))),
+      h('thead', null, h('tr', null, h('th', null, 'Constraint'), h('th', null, 'Lots/day it supports'))),
       h('tbody', null,
         Object.entries(result.constraints).map(([key, val]) =>
-          h('tr', { key: key, className: key === result.bindingConstraint ? 'binding' : '' },
+          h('tr', { key: key, className: tied.includes(key) ? 'binding' : '' },
             h('td', null, CONSTRAINT_LABELS[key] || key),
             h('td', null, val)
           )

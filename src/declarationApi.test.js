@@ -145,6 +145,24 @@ describe('POST /api/centres/:id/declaration', () => {
     expect(res.body.errors.join(' ')).toMatch(/secondsPerBag/);
   });
 
+  test('reports every tied constraint, not just the first, when several bind at once', async () => {
+    const { app, pool } = setup();
+    const centreId = await insertCentre(pool);
+
+    // weighbridge=60, hamali=60, gunny=60, truckEvacuation=60, yardSpace=60,
+    // moistureTesting=500 -- five-way tie at 60.
+    const res = await request(app)
+      .post(`/api/centres/${centreId}/declaration`)
+      .send(fullDeclarationBody());
+
+    expect(res.status).toBe(200);
+    expect(res.body.totalCapacity).toBe(60);
+    expect(res.body.bindingConstraint).toBe('weighbridge');
+    expect(res.body.bindingConstraints).toEqual([
+      'weighbridge', 'hamali', 'gunny', 'truckEvacuation', 'yardSpace',
+    ]);
+  });
+
   test('404s for an unknown centre', async () => {
     const { app } = setup();
     const res = await request(app)
