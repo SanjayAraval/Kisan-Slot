@@ -171,6 +171,24 @@ async function insertBooking(pool, overrides = {}) {
   return id;
 }
 
+async function insertLotWeighment(pool, overrides = {}) {
+  const id = overrides.id || uuid();
+  await pool.query(
+    `INSERT INTO lot_weighments (id, booking_id, mode, gross_kg, tare_kg, net_kg, bag_entries)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+    [
+      id,
+      overrides.bookingId,
+      overrides.mode || 'weighbridge',
+      overrides.grossKg ?? null,
+      overrides.tareKg ?? null,
+      overrides.netKg ?? 2000,
+      overrides.bagEntries ? JSON.stringify(overrides.bagEntries) : null,
+    ]
+  );
+  return id;
+}
+
 module.exports = {
   insertCentre,
   insertDailyInputs,
@@ -179,5 +197,6 @@ module.exports = {
   insertFarmerWithLand,
   insertCentreDay,
   insertBooking,
+  insertLotWeighment,
   DAILY_INPUT_BASELINE,
 };

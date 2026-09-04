@@ -211,6 +211,9 @@ function App() {
   return h('div', null,
     h('h1', null, "Tonight's Declaration"),
     h('p', { className: 'sub' }, "Declare tomorrow's operating inputs and see the recomputed capacity."),
+    h('p', { style: { fontSize: '0.85rem', marginTop: '-0.75rem', marginBottom: '1rem' } },
+      h('a', { href: '/dashboard.html', style: { color: '#1a5f3f' } }, 'District officer dashboard →')
+    ),
 
     error && h('div', { className: 'msg error' }, error),
 

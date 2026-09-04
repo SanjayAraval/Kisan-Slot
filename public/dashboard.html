@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>District Officer Dashboard</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 1000px; margin: 2rem auto; padding: 0 1rem; color: #1a1a1a; }
+  h1 { font-size: 1.3rem; margin-bottom: 0.25rem; }
+  h2 { font-size: 1.05rem; margin: 0 0 0.6rem; }
+  .sub { color: #666; margin-top: 0; margin-bottom: 1rem; font-size: 0.9rem; }
+  .nav { font-size: 0.85rem; margin-bottom: 1rem; }
+  .nav a { color: #1a5f3f; }
+  .date-row { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 1.25rem; }
+  .date-row label { font-size: 0.85rem; color: #444; }
+  .date-row input[type="date"] { padding: 0.35rem; font-size: 0.95rem; }
+  button.secondary { background: white; border: 1px solid #999; padding: 0.4rem 0.8rem; border-radius: 6px; font-size: 0.9rem; cursor: pointer; }
+  button.primary { background: #1a5f3f; color: white; border: none; padding: 0.4rem 0.8rem; border-radius: 6px; font-size: 0.9rem; cursor: pointer; }
+  button.primary:disabled { background: #9bb; cursor: default; }
+  section { margin-bottom: 1.75rem; }
+  .msg { padding: 0.6rem 0.8rem; border-radius: 6px; margin-bottom: 1rem; font-size: 0.9rem; }
+  .msg.error { background: #fdecea; color: #7a1e14; }
+  .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.6rem; }
+  .stat { background: #f7f7f7; border-radius: 8px; padding: 0.75rem 0.9rem; }
+  .stat.risk { background: #fdecea; }
+  .stat .n { font-size: 1.6rem; font-weight: 700; }
+  .stat .l { font-size: 0.78rem; color: #666; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+  table th, table td { padding: 0.45rem 0.6rem; border-bottom: 1px solid #eee; text-align: left; }
+  table th { color: #555; font-weight: 600; font-size: 0.78rem; text-transform: uppercase; }
+  tr.at-risk { background: #fff3cd; }
+  tr.overbooked td:first-child { border-left: 3px solid #c0392b; }
+  .cover-null { color: #888; }
+  .cover-low { color: #a01c1c; font-weight: 700; }
+  .alert-card { border: 1px solid #f0c36d; background: #fff7e6; border-radius: 8px; padding: 0.75rem 0.9rem; margin-bottom: 0.6rem; }
+  .alert-card .head { display: flex; justify-content: space-between; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+  .alert-card .name { font-weight: 600; }
+  .alert-card .reason { font-size: 0.8rem; color: #7a5a00; }
+  .alert-card .detail { font-size: 0.82rem; color: #555; margin-top: 0.3rem; }
+  .release-form { display: flex; align-items: center; gap: 0.4rem; margin-top: 0.5rem; }
+  .release-form input[type="number"] { width: 6rem; padding: 0.3rem; font-size: 0.9rem; }
+  .release-ok { color: #1a5f3f; font-size: 0.82rem; margin-top: 0.4rem; }
+  .empty { color: #888; font-size: 0.85rem; }
+  .bar-bg { background: #eee; border-radius: 4px; height: 0.5rem; width: 100%; overflow: hidden; }
+  .bar-fill { background: #c0392b; height: 100%; }
+  .bar-fill.ok { background: #1a5f3f; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+<script>
+'use strict';
+const h = React.createElement;
+
+const CENTRE_TYPE_LABELS = { apmc_mandi: 'APMC Mandi', pacs: 'PACS', ikp: 'IKP' };
+const WEIGHING_MODE_LABELS = { weighbridge: 'Weighbridge', platform: 'Platform' };
+const CONSTRAINT_LABELS = {
+  weighbridge: 'Weighing',
+  hamali: 'Hamali gangs',
+  gunny: 'Gunny bags',
+  truckEvacuation: 'Truck evacuation',
+  yardSpace: 'Yard space',
+  moistureTesting: 'Moisture testing',
+};
+const ALERT_REASON_LABELS = {
+  overbooked_and_low_bag_cover: 'Overbooked & low bag cover',
+  overbooked: 'Overbooked -- no bookable capacity left',
+  low_bag_cover: 'Low gunny bag cover',
+};
+
+function todayPlusOne() {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  return d.toISOString().slice(0, 10);
+}
+
+async function fetchJson(url, options) {
+  const res = await fetch(url, options);
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error((body && (body.message || (body.errors || []).join(', '))) || `request failed (${res.status})`);
+  }
+  return body;
+}
+
+function StatCard({ value, label, risk }) {
+  return h('div', { className: 'stat' + (risk ? ' risk' : '') },
+    h('div', { className: 'n' }, value),
+    h('div', { className: 'l' }, label)
+  );
+}
+
+function coverCell(daysOfCover) {
+  if (daysOfCover === null) return h('span', { className: 'cover-null' }, 'no data');
+  return h('span', { className: daysOfCover < 1.5 ? 'cover-low' : '' }, `${daysOfCover}d`);
+}
+
+function CentreGrid({ centres }) {
+  if (centres.length === 0) return h('p', { className: 'empty' }, 'No centres operating on this date.');
+  return h('table', null,
+    h('thead', null, h('tr', null,
+      h('th', null, 'Centre'), h('th', null, 'Type'), h('th', null, 'Weighing'),
+      h('th', null, 'Capacity (lots)'), h('th', null, 'Booked'),
+      h('th', null, 'Binding constraint'), h('th', null, 'Gunny cover')
+    )),
+    h('tbody', null,
+      centres.map((c) => {
+        const bindingLabel = (c.bindingConstraints || [c.bindingConstraint])
+          .map((k) => CONSTRAINT_LABELS[k] || k).join(' & ');
+        const rowClasses = [c.atRisk ? 'at-risk' : '', c.overbooked ? 'overbooked' : ''].filter(Boolean).join(' ');
+        return h('tr', { key: c.centreId, className: rowClasses },
+          h('td', null, `${c.name} (${c.code})`),
+          h('td', null, CENTRE_TYPE_LABELS[c.centreType] || c.centreType),
+          h('td', null, WEIGHING_MODE_LABELS[c.weighingMode] || c.weighingMode),
+          h('td', null, c.bookableCapacity),
+          h('td', null, `${c.bookedSlots}${c.overbooked ? ' (full)' : ''}`),
+          h('td', null, bindingLabel),
+          h('td', null, coverCell(c.daysOfCover))
+        );
+      })
+    )
+  );
+}
+
+function ReleaseBagsForm({ centreId, date, onReleased }) {
+  const [amount, setAmount] = React.useState(500);
+  const [submitting, setSubmitting] = React.useState(false);
+  const [error, setError] = React.useState(null);
+  const [done, setDone] = React.useState(false);
+
+  async function submit() {
+    setSubmitting(true);
+    setError(null);
+    try {
+      const body = await fetchJson(`/api/dashboard/centres/${centreId}/release-bags`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date, additionalBags: amount }),
+      });
+      setDone(true);
+      onReleased(body);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  if (done) return h('div', { className: 'release-ok' }, 'Bags released -- capacity recomputed.');
+
+  return h('div', null,
+    h('div', { className: 'release-form' },
+      h('input', {
+        type: 'number', min: 1, value: amount,
+        onChange: (e) => setAmount(Math.max(1, Number(e.target.value) || 0)),
+      }),
+      h('span', { style: { fontSize: '0.82rem', color: '#555' } }, 'bags'),
+      h('button', { className: 'primary', onClick: submit, disabled: submitting },
+        submitting ? 'Releasing…' : 'Release bags'
+      )
+    ),
+    error && h('div', { className: 'msg error', style: { marginTop: '0.4rem' } }, error)
+  );
+}
+
+function AlertCard({ alert, date, onReleased }) {
+  return h('div', { className: 'alert-card' },
+    h('div', { className: 'head' },
+      h('div', null,
+        h('div', { className: 'name' }, `${alert.name} (${alert.code})`),
+        h('div', { className: 'reason' }, ALERT_REASON_LABELS[alert.reason] || alert.reason)
+      )
+    ),
+    h('div', { className: 'detail' },
+      alert.daysOfCover === null
+        ? 'No recent burn-rate data. '
+        : `${alert.daysOfCover} days of gunny bag cover (burn rate ${alert.burnRatePerDay}/day). `,
+      alert.overbooked ? `Booked ${alert.bookedSlots} of ${alert.bookableCapacity} bookable slots.` : ''
+    ),
+    h(ReleaseBagsForm, { centreId: alert.centreId, date, onReleased })
+  );
+}
+
+function AlertsPanel({ alerts, date, onReleased }) {
+  if (alerts.length === 0) return h('p', { className: 'empty' }, 'No centres at risk on this date.');
+  return h('div', null, alerts.map((a) => h(AlertCard, { key: a.centreId, alert: a, date, onReleased })));
+}
+
+function EvacuationBacklog({ rows }) {
+  if (rows.length === 0) return h('p', { className: 'empty' }, 'No centres operating on this date.');
+  return h('table', null,
+    h('thead', null, h('tr', null,
+      h('th', null, 'Centre'), h('th', null, 'Undispatched (t)'), h('th', null, 'Yard capacity (t)'), h('th', null, 'Utilisation')
+    )),
+    h('tbody', null,
+      rows.map((r) => h('tr', { key: r.centreId },
+        h('td', null, `${r.name} (${r.code})`),
+        h('td', null, r.undispatchedTonnes),
+        h('td', null, r.yardCapacityTonnes),
+        h('td', null,
+          h('div', { className: 'bar-bg' },
+            h('div', {
+              className: 'bar-fill' + (r.yardUtilization < 0.75 ? ' ok' : ''),
+              style: { width: `${Math.min(100, r.yardUtilization * 100)}%` },
+            })
+          ),
+          h('span', { style: { fontSize: '0.75rem', color: '#666' } }, `${Math.round(r.yardUtilization * 100)}%`)
+        )
+      ))
+    )
+  );
+}
+
+function App() {
+  const [date, setDate] = React.useState(todayPlusOne());
+  const [dashboard, setDashboard] = React.useState(null);
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState(null);
+
+  const load = React.useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const body = await fetchJson(`/api/dashboard?date=${date}`);
+      setDashboard(body);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [date]);
+
+  React.useEffect(() => { load(); }, [load]);
+
+  const summary = dashboard && dashboard.summary;
+
+  return h('div', null,
+    h('h1', null, 'District Officer Dashboard'),
+    h('p', { className: 'sub' }, "Live view of tomorrow's declared centres, bookings, and bag stock risk."),
+    h('div', { className: 'nav' }, h('a', { href: '/declaration.html' }, "← Tonight's Declaration")),
+
+    h('div', { className: 'date-row' },
+      h('label', null, 'Date'),
+      h('input', { type: 'date', value: date, onChange: (e) => setDate(e.target.value) }),
+      h('button', { className: 'secondary', onClick: load, disabled: loading }, loading ? 'Loading…' : 'Refresh')
+    ),
+
+    error && h('div', { className: 'msg error' }, error),
+
+    summary && h('section', null,
+      h('div', { className: 'stat-grid' },
+        h(StatCard, { value: summary.centresOperating, label: 'Centres operating' }),
+        h(StatCard, { value: summary.totalDistrictCapacity, label: 'Total district capacity (lots/day)' }),
+        h(StatCard, { value: summary.bookingsForDate, label: 'Bookings this date' }),
+        h(StatCard, { value: summary.centresAtRisk, label: 'Centres at risk', risk: summary.centresAtRisk > 0 })
+      )
+    ),
+
+    dashboard && h('section', null,
+      h('h2', null, 'Centres'),
+      h(CentreGrid, { centres: dashboard.centres })
+    ),
+
+    dashboard && h('section', null,
+      h('h2', null, 'At-risk alerts'),
+      h(AlertsPanel, { alerts: dashboard.alerts, date, onReleased: load })
+    ),
+
+    dashboard && h('section', null,
+      h('h2', null, 'Evacuation backlog'),
+      h(EvacuationBacklog, { rows: dashboard.evacuationBacklog })
+    )
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(h(App));
+</script>
+</body>
+</html>
