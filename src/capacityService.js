@@ -1,5 +1,6 @@
 'use strict';
 
+const crypto = require('crypto');
 const { computeDailyCapacity } = require('./capacityEngine');
 
 // Maps a centre_daily_inputs row (pg's snake_case, numeric columns as
@@ -54,11 +55,15 @@ async function computeCentreDayCapacity(client, centreId, serviceDate) {
 // moves via the guarded UPDATE in bookingService.
 async function upsertCentreDay(client, centreId, serviceDate, capacity) {
   const { engineResult, bagsCapacity } = capacity;
+  // id is generated here rather than left to the column's own
+  // DEFAULT gen_random_uuid() -- purely an INSERT-branch value (the
+  // ON CONFLICT branch below never touches id, so an existing row keeps
+  // its own). Matches how the rest of the codebase generates ids.
   const result = await client.query(
     `INSERT INTO centre_day (
-       centre_id, service_date, total_capacity, walk_in_reserved, bookable_capacity,
+       id, centre_id, service_date, total_capacity, walk_in_reserved, bookable_capacity,
        bags_capacity, binding_constraint, constraint_breakdown
-     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
      ON CONFLICT (centre_id, service_date) DO UPDATE SET
        total_capacity = EXCLUDED.total_capacity,
        walk_in_reserved = EXCLUDED.walk_in_reserved,
@@ -68,6 +73,7 @@ async function upsertCentreDay(client, centreId, serviceDate, capacity) {
        constraint_breakdown = EXCLUDED.constraint_breakdown
      RETURNING id, bags_capacity, bags_booked`,
     [
+      crypto.randomUUID(),
       centreId,
       serviceDate,
       engineResult.totalCapacity,

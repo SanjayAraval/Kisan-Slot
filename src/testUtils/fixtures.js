@@ -116,11 +116,64 @@ async function insertFarmerWithLand(pool, { extentAcres = 2.5, ...rest } = {}) {
   return insertFarmer(pool, { ...rest, landRecordId });
 }
 
+// Inserts a centre_day row directly, bypassing the capacity engine, for
+// tests that want precise control over bags_capacity/bags_booked rather
+// than deriving them from centre_daily_inputs.
+async function insertCentreDay(pool, overrides = {}) {
+  const id = overrides.id || uuid();
+  await pool.query(
+    `INSERT INTO centre_day (
+       id, centre_id, service_date, total_capacity, walk_in_reserved, bookable_capacity,
+       bags_capacity, bags_booked, binding_constraint, constraint_breakdown
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+    [
+      id,
+      overrides.centreId,
+      overrides.serviceDate,
+      overrides.totalCapacity ?? 10,
+      overrides.walkInReserved ?? 2,
+      overrides.bookableCapacity ?? 8,
+      overrides.bagsCapacity ?? 800,
+      overrides.bagsBooked ?? 0,
+      overrides.bindingConstraint || 'weighbridge',
+      JSON.stringify(overrides.constraintBreakdown || {}),
+    ]
+  );
+  return id;
+}
+
+async function insertBooking(pool, overrides = {}) {
+  const id = overrides.id || uuid();
+  await pool.query(
+    `INSERT INTO bookings (
+       id, centre_day_id, farmer_id, token, declared_quantity_quintals, bags_reserved,
+       booking_channel, status, booked_at, checked_in_at, completed_at, capacity_released_at
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+    [
+      id,
+      overrides.centreDayId,
+      overrides.farmerId,
+      overrides.token || `TOKEN-${id.slice(0, 8)}`,
+      overrides.declaredQuantityQuintals ?? 40,
+      overrides.bagsReserved ?? 100,
+      overrides.bookingChannel || 'counter',
+      overrides.status || 'booked',
+      overrides.bookedAt || new Date().toISOString(),
+      overrides.checkedInAt || null,
+      overrides.completedAt || null,
+      overrides.capacityReleasedAt || null,
+    ]
+  );
+  return id;
+}
+
 module.exports = {
   insertCentre,
   insertDailyInputs,
   insertLandRecord,
   insertFarmer,
   insertFarmerWithLand,
+  insertCentreDay,
+  insertBooking,
   DAILY_INPUT_BASELINE,
 };

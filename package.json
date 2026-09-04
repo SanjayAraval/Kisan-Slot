@@ -8,7 +8,8 @@
     "test": "jest",
     "start": "node src/server.js",
     "seed": "node db/seed.js",
-    "seed:dry": "node db/seed.js --dry-run"
+    "seed:dry": "node db/seed.js --dry-run",
+    "reallocate": "node src/reallocationCli.js"
   },
   "dependencies": {
     "express": "^5.2.1",

@@ -15,6 +15,11 @@ CREATE TABLE centres (
     state        TEXT NOT NULL,
     latitude     NUMERIC(9, 6) NOT NULL,
     longitude    NUMERIC(9, 6) NOT NULL,
+    -- Observed average minutes/lot, exponentially weighted -- updated
+    -- nightly from today's completed lots. NULL until the first
+    -- observation. Distinct from centre_daily_inputs' planning inputs,
+    -- which are entered by hand; this is what actually happened.
+    service_time_ewma_minutes  NUMERIC(6, 2),
     created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -159,10 +164,19 @@ CREATE TABLE bookings (
     bags_reserved                NUMERIC(8, 2) NOT NULL CHECK (bags_reserved > 0),
     booking_channel              TEXT NOT NULL CHECK (booking_channel IN ('app', 'sms', 'ivr', 'counter')),
     is_walk_in                   BOOLEAN NOT NULL DEFAULT false,
+    -- 'deferred' is system-initiated (nightly reallocation bumped this
+    -- booking for lack of capacity) -- distinct from farmer-initiated
+    -- 'cancelled', so it can be reported and scored differently.
     status                       TEXT NOT NULL DEFAULT 'booked' CHECK (status IN (
-                                      'booked', 'checked_in', 'completed', 'cancelled', 'no_show'
+                                      'booked', 'checked_in', 'completed', 'cancelled', 'no_show', 'deferred'
                                   )),
     booked_at                    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    checked_in_at                TIMESTAMPTZ,
+    completed_at                 TIMESTAMPTZ,
+    -- Set once the nightly job has released this booking's bags back into
+    -- centre_day.bags_booked (a no-show, or a deferral) -- keeps the
+    -- release idempotent across repeated job runs.
+    capacity_released_at         TIMESTAMPTZ,
 
     UNIQUE (centre_day_id, farmer_id)
 );
@@ -197,3 +211,33 @@ CREATE TABLE payment_deductions (
 );
 
 CREATE INDEX idx_payment_deductions_j_form_id ON payment_deductions (j_form_id);
+
+-- Audit trail for system-initiated deferrals, and the source of a
+-- farmer's prior-deferrals count for future allocation scoring.
+CREATE TABLE deferrals (
+    id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    booking_id              UUID NOT NULL REFERENCES bookings(id),
+    farmer_id               UUID NOT NULL REFERENCES farmers(id),
+    centre_id               UUID NOT NULL REFERENCES centres(id),
+    original_service_date   DATE NOT NULL,
+    score                   NUMERIC(10, 2) NOT NULL,
+    reason                  TEXT NOT NULL,
+    created_at              TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_deferrals_farmer_id ON deferrals (farmer_id);
+
+-- Mock notification gateway. The reallocation job (and, eventually,
+-- other flows) write here instead of calling a real SMS/IVR provider --
+-- matches the offline-first non-negotiable without wiring a live gateway.
+CREATE TABLE messages (
+    id                   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    farmer_id            UUID NOT NULL REFERENCES farmers(id),
+    related_booking_id   UUID REFERENCES bookings(id),
+    channel              TEXT NOT NULL DEFAULT 'sms' CHECK (channel IN ('sms', 'ivr', 'app')),
+    body                 TEXT NOT NULL,
+    status               TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ('queued', 'sent', 'failed')),
+    created_at           TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_messages_farmer_id ON messages (farmer_id);

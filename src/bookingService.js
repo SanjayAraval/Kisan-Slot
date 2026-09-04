@@ -1,5 +1,6 @@
 'use strict';
 
+const crypto = require('crypto');
 const { YIELD_QUINTALS_PER_ACRE, BAGS_PER_QUINTAL, OVER_DECLARE_CAP_MULTIPLIER, NEARBY_CENTRE_RADIUS_KM, ALT_DATE_SEARCH_HORIZON_DAYS } = require('./constants');
 const { computeCentreDayCapacity, upsertCentreDay } = require('./capacityService');
 const { haversineKm } = require('./geo');
@@ -102,10 +103,13 @@ async function attemptBooking(client, { farmerId, quintals, centreId, date }) {
   const token = `${centreCode}-${date.replace(/-/g, '')}-${String(sequence).padStart(4, '0')}`;
 
   const bookingResult = await client.query(
-    `INSERT INTO bookings (centre_day_id, farmer_id, token, declared_quantity_quintals, bags_reserved, booking_channel)
-     VALUES ($1, $2, $3, $4, $5, $6)
+    // id generated client-side rather than left to the column's DEFAULT
+    // gen_random_uuid() -- consistent with upsertCentreDay (see its
+    // comment): this exact query text can run many times per process.
+    `INSERT INTO bookings (id, centre_day_id, farmer_id, token, declared_quantity_quintals, bags_reserved, booking_channel)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
      RETURNING id, token, booked_at`,
-    [centreDayRow.id, farmerId, token, quintals, bagsNeeded, 'app']
+    [crypto.randomUUID(), centreDayRow.id, farmerId, token, quintals, bagsNeeded, 'app']
   );
 
   const { bags_booked: bagsBooked, bags_capacity: bagsCapacity } = claim.rows[0];
