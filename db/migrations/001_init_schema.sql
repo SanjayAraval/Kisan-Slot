@@ -26,12 +26,17 @@ CREATE TABLE centres (
 -- Land records mirrored from Dharani (mocked integration). Read-only from
 -- our side -- this table is a local cache of externally sourced data, not
 -- something farmers fill in.
+-- latitude/longitude are nullable -- not every historical land record is
+-- geocoded -- but the seed script always populates them, and consumers
+-- (the reallocation job's distance scoring) fall back to 0 when absent.
 CREATE TABLE land_records (
     id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     land_record_number  TEXT NOT NULL UNIQUE,
     farmer_name         TEXT NOT NULL,
     father_name         TEXT,
     village             TEXT NOT NULL,
+    latitude            NUMERIC(9, 6),
+    longitude           NUMERIC(9, 6),
     survey_number       TEXT NOT NULL,
     extent_acres        NUMERIC(6, 2) NOT NULL CHECK (extent_acres > 0),
     crop                TEXT NOT NULL,
@@ -167,8 +172,10 @@ CREATE TABLE bookings (
     -- 'deferred' is system-initiated (nightly reallocation bumped this
     -- booking for lack of capacity) -- distinct from farmer-initiated
     -- 'cancelled', so it can be reported and scored differently.
+    -- 'rejected' is a quality-check failure at the lot workflow's
+    -- moisture test -- the lot never reaches weighing.
     status                       TEXT NOT NULL DEFAULT 'booked' CHECK (status IN (
-                                      'booked', 'checked_in', 'completed', 'cancelled', 'no_show', 'deferred'
+                                      'booked', 'checked_in', 'completed', 'cancelled', 'no_show', 'deferred', 'rejected'
                                   )),
     booked_at                    TIMESTAMPTZ NOT NULL DEFAULT now(),
     checked_in_at                TIMESTAMPTZ,
@@ -241,3 +248,53 @@ CREATE TABLE messages (
 );
 
 CREATE INDEX idx_messages_farmer_id ON messages (farmer_id);
+
+-- The lot workflow: a booking becomes a "lot" once its token is scanned
+-- at check-in. One quality check and one weighment per booking (no
+-- revisions -- unlike j_forms, retesting/reweighing isn't modelled here).
+-- tested_at is always the server clock, never client-supplied, so
+-- service time (checked_in_at -> completed_at on bookings) is derived,
+-- not entered.
+CREATE TABLE lot_quality_checks (
+    id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    booking_id        UUID NOT NULL UNIQUE REFERENCES bookings(id),
+    meter_id          TEXT NOT NULL,
+    calibration_date  DATE NOT NULL,
+    sample_1          NUMERIC(4, 1) NOT NULL CHECK (sample_1 >= 0),
+    sample_2          NUMERIC(4, 1) NOT NULL CHECK (sample_2 >= 0),
+    sample_3          NUMERIC(4, 1) NOT NULL CHECK (sample_3 >= 0),
+    mean_moisture     NUMERIC(4, 1) NOT NULL,
+    verdict           TEXT NOT NULL CHECK (verdict IN ('accept', 'cut', 'reject')),
+    tested_at         TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- mode mirrors centre_daily_inputs.weighing_mode for that day.
+-- weighbridge gives gross/tare; platform gives a per-bag entry list
+-- (bag_entries) and no gross/tare. net_kg is always populated, computed
+-- either way -- everything downstream (bag deduction, J-Form quintals)
+-- reads net_kg only and doesn't care which mode produced it.
+CREATE TABLE lot_weighments (
+    id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    booking_id    UUID NOT NULL UNIQUE REFERENCES bookings(id),
+    mode          TEXT NOT NULL CHECK (mode IN ('weighbridge', 'platform')),
+    gross_kg      NUMERIC(8, 2) CHECK (gross_kg > 0),
+    tare_kg       NUMERIC(8, 2) CHECK (tare_kg >= 0),
+    net_kg        NUMERIC(8, 2) NOT NULL CHECK (net_kg > 0),
+    bag_entries   JSONB,
+    weighed_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CHECK (
+        (mode = 'weighbridge' AND gross_kg IS NOT NULL AND tare_kg IS NOT NULL)
+        OR
+        (mode = 'platform' AND bag_entries IS NOT NULL)
+    )
+);
+
+-- One current assignment per booking -- re-dispatching (wrong vehicle
+-- logged, truck swapped) overwrites rather than versions, unlike
+-- j_forms; nothing downstream depends on dispatch history.
+CREATE TABLE dispatches (
+    id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    booking_id       UUID NOT NULL UNIQUE REFERENCES bookings(id),
+    vehicle_number   TEXT NOT NULL,
+    dispatched_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);

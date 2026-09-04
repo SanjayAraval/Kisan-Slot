@@ -71,14 +71,16 @@ async function insertDailyInputs(pool, { centreId, serviceDate, overrides = {} }
 async function insertLandRecord(pool, overrides = {}) {
   const id = overrides.id || uuid();
   await pool.query(
-    `INSERT INTO land_records (id, land_record_number, farmer_name, father_name, village, survey_number, extent_acres, crop)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+    `INSERT INTO land_records (id, land_record_number, farmer_name, father_name, village, latitude, longitude, survey_number, extent_acres, crop)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
     [
       id,
       overrides.landRecordNumber || `TEST-LR-${id.slice(0, 8)}`,
       overrides.farmerName || 'Test Owner',
       overrides.fatherName || 'Test Father',
       overrides.village || 'Test Village',
+      overrides.lat ?? null,
+      overrides.lng ?? null,
       overrides.surveyNumber || '1/A',
       overrides.extentAcres ?? 2.5,
       overrides.crop || 'Paddy',
@@ -110,9 +112,11 @@ async function insertFarmer(pool, overrides = {}) {
   return id;
 }
 
-// Convenience: a farmer with their own land record of a given size.
-async function insertFarmerWithLand(pool, { extentAcres = 2.5, ...rest } = {}) {
-  const landRecordId = await insertLandRecord(pool, { extentAcres });
+// Convenience: a farmer with their own land record of a given size
+// (and, optionally, a location -- lat/lng default to null, matching an
+// ungeocoded record).
+async function insertFarmerWithLand(pool, { extentAcres = 2.5, lat, lng, ...rest } = {}) {
+  const landRecordId = await insertLandRecord(pool, { extentAcres, lat, lng });
   return insertFarmer(pool, { ...rest, landRecordId });
 }
 

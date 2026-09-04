@@ -84,21 +84,42 @@ function randomExtentAcres(rng) {
 // Centres + centre-day capacity
 // ---------------------------------------------------------------------------
 
+// Villages cluster within ~3-13km of their centre's town -- plausible for
+// a mandal's surrounding villages without claiming survey accuracy. Each
+// village name gets one fixed coordinate, reused by every land record in
+// that village (a village has one location, not one per farmer).
+function buildVillageCoords(rng, villages, centreLat, centreLng) {
+  const coords = {};
+  for (const village of villages) {
+    const bearing = rng.float(0, 2 * Math.PI);
+    const distanceDeg = rng.float(0.03, 0.12);
+    coords[village] = {
+      lat: round(centreLat + distanceDeg * Math.cos(bearing), 6),
+      lng: round(centreLng + distanceDeg * Math.sin(bearing), 6),
+    };
+  }
+  return coords;
+}
+
 function buildCentres(rng) {
   const villagePool = generateVillageNames(rng, CENTRES.length * VILLAGES_PER_CENTRE);
 
-  return CENTRES.map((profile, index) => ({
-    id: uuid(),
-    name: profile.name,
-    code: profile.code,
-    centreType: profile.centreType,
-    weighingMode: profile.weighingMode,
-    lat: profile.lat,
-    lng: profile.lng,
-    intendedBottleneck: profile.intendedBottleneck,
-    overrides: profile.overrides,
-    villages: villagePool.slice(index * VILLAGES_PER_CENTRE, (index + 1) * VILLAGES_PER_CENTRE),
-  }));
+  return CENTRES.map((profile, index) => {
+    const villages = villagePool.slice(index * VILLAGES_PER_CENTRE, (index + 1) * VILLAGES_PER_CENTRE);
+    return {
+      id: uuid(),
+      name: profile.name,
+      code: profile.code,
+      centreType: profile.centreType,
+      weighingMode: profile.weighingMode,
+      lat: profile.lat,
+      lng: profile.lng,
+      intendedBottleneck: profile.intendedBottleneck,
+      overrides: profile.overrides,
+      villages,
+      villageCoords: buildVillageCoords(rng, villages, profile.lat, profile.lng),
+    };
+  });
 }
 
 function buildCentreDays(rng, centres) {
@@ -193,13 +214,15 @@ function buildFarmersAndLandRecords(rng, centres) {
   const dbtFailedCount = Math.round(TOTAL_FARMERS * DBT_FAILED_RATIO);
   const dbtFailedSet = new Set(shuffledForDbt.slice(0, dbtFailedCount));
 
-  function makeLandRecord(farmerName, village) {
+  function makeLandRecord(farmerName, village, coords) {
     const record = {
       id: uuid(),
       landRecordNumber: `MDK-DHARANI-${String(landRecordSeq).padStart(6, '0')}`,
       farmerName,
       fatherName: generateFatherName(rng),
       village,
+      lat: coords.lat,
+      lng: coords.lng,
       surveyNumber: randomSurveyNumber(rng),
       extentAcres: randomExtentAcres(rng),
       crop: 'Paddy',
@@ -212,6 +235,7 @@ function buildFarmersAndLandRecords(rng, centres) {
   for (let i = 0; i < TOTAL_FARMERS; i++) {
     const centre = centres[i % centres.length];
     const village = rng.pick(centre.villages);
+    const villageCoords = centre.villageCoords[village];
     const farmerName = generatePersonName(rng);
     const isUnmatched = unmatchedSet.has(i);
     const isTenant = tenantSet.has(i);
@@ -227,11 +251,11 @@ function buildFarmersAndLandRecords(rng, centres) {
       // Cultivates land recorded under someone else's name.
       let ownerName = generatePersonName(rng);
       while (ownerName === farmerName) ownerName = generatePersonName(rng);
-      const record = makeLandRecord(ownerName, village);
+      const record = makeLandRecord(ownerName, village, villageCoords);
       landRecordId = record.id;
       linkedExtentAcres = record.extentAcres;
     } else {
-      const record = makeLandRecord(farmerName, village);
+      const record = makeLandRecord(farmerName, village, villageCoords);
       landRecordId = record.id;
       linkedExtentAcres = record.extentAcres;
     }
@@ -382,9 +406,15 @@ async function writeToDatabase({ centres, centreDailyInputs, centreDays, landRec
     await batchInsert(
       client,
       'land_records',
-      ['id', 'land_record_number', 'farmer_name', 'father_name', 'village', 'survey_number', 'extent_acres', 'crop'],
+      [
+        'id', 'land_record_number', 'farmer_name', 'father_name', 'village', 'latitude', 'longitude',
+        'survey_number', 'extent_acres', 'crop',
+      ],
       landRecords,
-      (l) => [l.id, l.landRecordNumber, l.farmerName, l.fatherName, l.village, l.surveyNumber, l.extentAcres, l.crop]
+      (l) => [
+        l.id, l.landRecordNumber, l.farmerName, l.fatherName, l.village, l.lat, l.lng,
+        l.surveyNumber, l.extentAcres, l.crop,
+      ]
     );
 
     await batchInsert(

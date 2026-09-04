@@ -87,6 +87,62 @@ describe('runNightlyReallocation', () => {
     expect(messageRows.rows[0].body).toMatch(/deferred/i);
   });
 
+  test('distanceKm is computed from real land-record/centre coordinates, not hardcoded: the farther farmer is deferred first', async () => {
+    const pool = setup();
+    // Centre sits at (18.00, 78.00).
+    const centreId = await insertCentre(pool, { lat: 18.0, lng: 78.0 });
+    const centreDayId = await insertCentreDay(pool, {
+      centreId,
+      serviceDate: TOMORROW,
+      bagsCapacity: 200,
+      bagsBooked: 200,
+    });
+
+    // Identical in every other scoring factor -- extent, declared
+    // quantity, bookedAt -- so only distance can explain the outcome.
+    const nearFarmerId = await insertFarmerWithLand(pool, {
+      extentAcres: 3,
+      farmerName: 'Near Farmer',
+      lat: 18.0, // effectively at the centre -- ~0km
+      lng: 78.0,
+    });
+    const farFarmerId = await insertFarmerWithLand(pool, {
+      extentAcres: 3,
+      farmerName: 'Far Farmer',
+      lat: 18.5, // ~56km north
+      lng: 78.0,
+    });
+
+    for (const [farmerId] of [[nearFarmerId], [farFarmerId]]) {
+      await insertBooking(pool, {
+        centreDayId,
+        farmerId,
+        bagsReserved: 100,
+        declaredQuantityQuintals: 3 * 24,
+        status: 'booked',
+        bookedAt: '2026-09-01T00:00:00Z',
+      });
+    }
+
+    // Recompute keeps capacity at only 1 bookable truck (100 bags) --
+    // one of the two 100-bag bookings must be deferred.
+    await insertDailyInputs(pool, {
+      centreId,
+      serviceDate: TOMORROW,
+      overrides: { truckEvacuationCapacity: 2 }, // total 2, walk-in 1, bookable 1 -> 100 bags
+    });
+
+    const plan = await runNightlyReallocation(pool, { today: TODAY });
+
+    expect(plan.deferrals).toHaveLength(1);
+    expect(plan.deferrals[0].farmerId).toBe(farFarmerId);
+
+    const deferredBooking = await pool.query("SELECT farmer_id FROM bookings WHERE status = 'deferred'");
+    expect(deferredBooking.rows[0].farmer_id).toBe(farFarmerId);
+    const keptBooking = await pool.query("SELECT farmer_id FROM bookings WHERE status = 'booked'");
+    expect(keptBooking.rows[0].farmer_id).toBe(nearFarmerId);
+  });
+
   test('releases no-show capacity from today, and is idempotent across repeated runs', async () => {
     const pool = setup();
     const centreId = await insertCentre(pool);

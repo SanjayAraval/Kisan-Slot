@@ -3,6 +3,7 @@
 const crypto = require('crypto');
 const { planNightlyReallocation } = require('./reallocationEngine');
 const { toEngineInput, loadDailyInputs, upsertCentreDay } = require('./capacityService');
+const { haversineKm } = require('./geo');
 const { RECOMPUTE_HORIZON_DAYS } = require('./constants');
 
 function addDays(dateStr, days) {
@@ -26,7 +27,7 @@ async function loadNoShowBookings(client, centreId, date) {
   return noShows.rows.map((r) => ({ bookingId: r.id, bagsReserved: Number(r.bags_reserved) }));
 }
 
-async function loadConfirmedBookings(client, centreId, date) {
+async function loadConfirmedBookings(client, centreId, date, centreLat, centreLng) {
   const centreDay = await client.query('SELECT id FROM centre_day WHERE centre_id = $1 AND service_date = $2', [
     centreId,
     date,
@@ -38,7 +39,7 @@ async function loadConfirmedBookings(client, centreId, date) {
     // subquery in the SELECT list -- both are valid SQL, but this form
     // is what pg-mem's query planner can actually resolve.
     `SELECT b.id, b.farmer_id, b.bags_reserved, b.booked_at, b.declared_quantity_quintals,
-            lr.extent_acres,
+            lr.extent_acres, lr.latitude, lr.longitude,
             COALESCE(pd.prior_deferrals, 0) AS prior_deferrals
      FROM bookings b
      JOIN farmers f ON f.id = b.farmer_id
@@ -58,12 +59,12 @@ async function loadConfirmedBookings(client, centreId, date) {
     extentAcres: Number(r.extent_acres),
     declaredQuantityQuintals: Number(r.declared_quantity_quintals),
     priorDeferrals: r.prior_deferrals,
-    // No farmer/village geocoding exists yet -- villages are free-text
-    // names, not coordinates -- so distance can't be computed for real.
-    // Kept as an explicit input to the scoring function (see
-    // reallocationEngine.js) rather than baked in, so this is a one-line
-    // fix once geocoding lands.
-    distanceKm: 0,
+    // 0 when the land record has no coordinates on file (not every
+    // historical record is geocoded) rather than dropping the booking.
+    distanceKm:
+      r.latitude === null || r.longitude === null || centreLat === null || centreLng === null
+        ? 0
+        : haversineKm(centreLat, centreLng, Number(r.latitude), Number(r.longitude)),
   }));
 }
 
@@ -82,18 +83,22 @@ async function loadCompletedLots(client, centreId, date) {
 }
 
 async function buildSnapshot(client, today) {
-  const centresResult = await client.query('SELECT id, code, service_time_ewma_minutes FROM centres');
+  const centresResult = await client.query('SELECT id, code, latitude, longitude, service_time_ewma_minutes FROM centres');
   const centres = [];
 
   for (const row of centresResult.rows) {
     const centreId = row.id;
+    const centreLat = row.latitude === null ? null : Number(row.latitude);
+    const centreLng = row.longitude === null ? null : Number(row.longitude);
 
     const futureDates = [];
     for (let offset = 1; offset <= RECOMPUTE_HORIZON_DAYS; offset++) {
       const date = addDays(today, offset);
       const dailyInputRow = await loadDailyInputs(client, centreId, date);
       const dailyInputEngineInput = dailyInputRow ? toEngineInput(dailyInputRow) : null;
-      const confirmedBookings = dailyInputEngineInput ? await loadConfirmedBookings(client, centreId, date) : [];
+      const confirmedBookings = dailyInputEngineInput
+        ? await loadConfirmedBookings(client, centreId, date, centreLat, centreLng)
+        : [];
       futureDates.push({ date, dailyInputEngineInput, confirmedBookings });
     }
 

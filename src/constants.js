@@ -23,4 +23,17 @@ module.exports = {
   RECOMPUTE_HORIZON_DAYS: 7, // D+1 .. D+7
   SERVICE_TIME_EWMA_ALPHA: 0.3,
   DEFERRAL_REASON_CAPACITY_REDUCED: 'capacity_reduced',
+
+  // Lot workflow: moisture quality gate, checked against the 3-sample
+  // mean. <=17.0% accepted at full value; 17.0-19.0% accepted with a
+  // moisture cut (deduction, itemised at J-Form time); above 19.0%
+  // rejected outright. Policy constants -- tune per season/scheme.
+  MOISTURE_ACCEPT_MAX_PCT: 17.0,
+  MOISTURE_REJECT_MIN_PCT: 19.0,
+  // Gunny bag weight used to convert a weighed net quantity into bags
+  // consumed from centre stock (netKg / KG_PER_BAG). Same 40kg/bag as
+  // BAGS_PER_QUINTAL implies (100kg / 2.5 = 40kg) -- kept as its own
+  // named constant since this is a kg-denominated conversion, not a
+  // quintal-denominated one.
+  KG_PER_BAG: 40,
 };

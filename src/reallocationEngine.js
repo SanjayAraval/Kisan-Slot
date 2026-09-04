@@ -14,9 +14,18 @@ function round(value, decimals = 2) {
   return Math.round(value * factor) / factor;
 }
 
+// Date.parse(x) silently drops sub-second precision when x is already a
+// Date object -- it stringifies via toString() (second resolution), not
+// toISOString(). pg returns TIMESTAMPTZ columns as Date objects, so two
+// events in the same second would appear simultaneous. new Date(x) does
+// not have that problem for either a string or a Date -- use it always.
+function toMs(value) {
+  return new Date(value).getTime();
+}
+
 function daysBetween(laterDate, earlierIso) {
-  const later = Date.parse(`${laterDate}T00:00:00Z`);
-  const earlier = Date.parse(earlierIso);
+  const later = toMs(`${laterDate}T00:00:00Z`);
+  const earlier = toMs(earlierIso);
   return Math.max(0, Math.floor((later - earlier) / 86400000));
 }
 
@@ -56,7 +65,7 @@ function selectDeferrals(scoredBookings, bagsCapacity) {
     if (a.score !== b.score) return a.score - b.score;
     // Tied on score: defer the more-recently-booked one first, consistent
     // with daysWaiting rewarding whoever has been waiting longer.
-    const bookedDiff = Date.parse(b.bookedAt) - Date.parse(a.bookedAt);
+    const bookedDiff = toMs(b.bookedAt) - toMs(a.bookedAt);
     if (bookedDiff !== 0) return bookedDiff;
     return a.bookingId < b.bookingId ? -1 : a.bookingId > b.bookingId ? 1 : 0;
   });
@@ -74,7 +83,7 @@ function selectDeferrals(scoredBookings, bagsCapacity) {
 function averageServiceMinutes(completedLots) {
   const durations = completedLots
     .filter((l) => l.checkedInAt && l.completedAt)
-    .map((l) => (Date.parse(l.completedAt) - Date.parse(l.checkedInAt)) / 60000)
+    .map((l) => (toMs(l.completedAt) - toMs(l.checkedInAt)) / 60000)
     .filter((minutes) => minutes > 0);
   if (durations.length === 0) return null;
   return durations.reduce((sum, m) => sum + m, 0) / durations.length;
