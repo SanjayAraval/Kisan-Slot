@@ -1,5 +1,7 @@
 'use strict';
 
+require('dotenv').config();
+
 const { createPool } = require('./db');
 const { runNightlyReallocation } = require('./reallocationJob');
 
