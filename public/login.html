@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<title>Kisan Slot — Login</title>
+<link rel="stylesheet" href="/theme.css" />
+<style>
+  body { max-width: 480px; margin: 0 auto; padding: 1.5rem 1rem 3rem; font-size: 17px; line-height: 1.45; }
+  h1 { font-size: 1.3rem; margin: 0.6rem 0 0.1rem; }
+  .sub { color: var(--ink-60); margin: 0 0 1.4rem; font-size: 0.92rem; }
+
+  .role-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; margin-bottom: 1.4rem; }
+  .role-btn {
+    text-align: left; padding: 0.85rem 0.9rem; border-radius: var(--radius);
+    border: 1.5px solid var(--ink-16); background: var(--paper-raised); color: var(--ink);
+    cursor: pointer; min-height: 4.4rem;
+  }
+  .role-btn .ic { font-size: 1.3rem; display: block; margin-bottom: 0.25rem; }
+  .role-btn .lbl { font-weight: 700; font-size: 0.92rem; display: block; }
+  .role-btn.active { border-color: var(--green); background: var(--green-bg); }
+
+  label { display: block; font-size: 0.88rem; font-weight: 600; color: var(--ink); margin-bottom: 0.3rem; }
+  input {
+    width: 100%; font-size: 1rem; padding: 0.8rem 0.9rem; border: 1px solid var(--ink-16);
+    border-radius: var(--radius); background: var(--paper-raised); color: var(--ink); box-sizing: border-box;
+    min-height: 3rem;
+  }
+  .field { margin-bottom: 1rem; }
+  .btn { width: 100%; min-height: 3.1rem; font-size: 1.05rem; }
+
+  .card {
+    background: var(--paper-raised); border: 1px solid var(--ink-10); border-radius: var(--radius);
+    padding: 1.1rem 1.1rem; margin-bottom: 1rem;
+  }
+
+  .otp-note { font-size: 0.85rem; color: var(--ink-60); margin: -0.4rem 0 1rem; }
+  .otp-note b { color: var(--ink); letter-spacing: 0.05em; }
+
+  .link-row { text-align: center; margin: 0.9rem 0 0; font-size: 0.92rem; }
+  .link-row a { color: var(--green); font-weight: 600; }
+
+  .demo-section { margin-top: 1.8rem; }
+  .demo-title { display: flex; align-items: center; gap: 0.5rem; font-weight: 700; font-size: 0.9rem; margin-bottom: 0.6rem; }
+  .demo-badge { font-size: 0.7rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; color: var(--gold-ink); background: var(--gold-bg); border: 1px solid var(--gold-border); padding: 0.15rem 0.5rem; border-radius: 999px; }
+  .demo-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+  .demo-btn { min-height: 3rem; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+<script>
+'use strict';
+const h = React.createElement;
+const { useState } = React;
+
+async function postJson(url, body) {
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body || {}),
+  });
+  const json = await res.json().catch(() => ({}));
+  return { httpStatus: res.status, body: json };
+}
+
+const ROLES = [
+  { key: 'farmer', icon: '🧑‍🌾', label: 'Farmer' },
+  { key: 'centre_officer', icon: '🏢', label: 'Centre officer' },
+  { key: 'district_officer', icon: '🗺️', label: 'District officer' },
+  { key: 'operator', icon: '🖥️', label: 'Assisted operator (CSC/VLE)' },
+];
+
+// Where each role lands after a successful login.
+const REDIRECT_BY_ROLE = {
+  farmer: '/farmer.html',
+  centre_officer: '/declaration.html',
+  district_officer: '/dashboard.html',
+  operator: '/farmer_registration.html',
+};
+
+function goToRoleHome(role) {
+  window.location.href = REDIRECT_BY_ROLE[role] || '/';
+}
+
+function RoleGrid({ role, onPick }) {
+  return h('div', { className: 'role-grid' },
+    ROLES.map((r) => h('button', {
+      key: r.key,
+      type: 'button',
+      className: `role-btn ${role === r.key ? 'active' : ''}`,
+      onClick: () => onPick(r.key),
+    },
+      h('span', { className: 'ic' }, r.icon),
+      h('span', { className: 'lbl' }, r.label)
+    ))
+  );
+}
+
+function FarmerLogin() {
+  const [mobile, setMobile] = useState('');
+  const [otpSent, setOtpSent] = useState(false);
+  const [code, setCode] = useState('');
+  const [devCode, setDevCode] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState(null);
+
+  async function sendCode() {
+    setError(null);
+    setSubmitting(true);
+    try {
+      const { httpStatus, body } = await postJson('/api/auth/request-otp', { mobile, purpose: 'login' });
+      if (httpStatus !== 200) {
+        setError(body.message || 'Could not send a code.');
+        return;
+      }
+      setOtpSent(true);
+      setDevCode(body.devCode || null);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function verifyCode() {
+    setError(null);
+    setSubmitting(true);
+    try {
+      const { httpStatus, body } = await postJson('/api/auth/verify-otp', { mobile, code, purpose: 'login' });
+      if (httpStatus !== 200) {
+        setError(body.message || 'Incorrect or expired code.');
+        return;
+      }
+      goToRoleHome('farmer');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return h('div', { className: 'card' },
+    error && h('div', { className: 'callout callout-danger', style: { marginBottom: '1rem' } }, error),
+    h('div', { className: 'field' },
+      h('label', null, 'Mobile number'),
+      h('input', {
+        type: 'tel', inputMode: 'numeric', maxLength: 10, placeholder: '10-digit mobile number',
+        value: mobile, disabled: otpSent,
+        onChange: (e) => setMobile(e.target.value.replace(/\D/g, '')),
+      })
+    ),
+    !otpSent && h('button', {
+      className: 'btn btn-primary', onClick: sendCode, disabled: submitting || mobile.length !== 10,
+    }, submitting ? 'Sending…' : 'Send code'),
+
+    otpSent && h('div', null,
+      devCode && h('p', { className: 'otp-note' }, 'Demo mode -- your code is ', h('b', null, devCode)),
+      h('div', { className: 'field' },
+        h('label', null, 'Enter 6-digit code'),
+        h('input', {
+          type: 'tel', inputMode: 'numeric', maxLength: 6, placeholder: '••••••',
+          value: code, onChange: (e) => setCode(e.target.value.replace(/\D/g, '')),
+        })
+      ),
+      h('button', {
+        className: 'btn btn-primary', onClick: verifyCode, disabled: submitting || code.length !== 6,
+      }, submitting ? 'Verifying…' : 'Verify & log in')
+    ),
+
+    h('div', { className: 'link-row' }, 'New farmer? ', h('a', { href: '/farmer_registration.html' }, 'Register'))
+  );
+}
+
+function EmployeeLogin({ role }) {
+  const [employeeId, setEmployeeId] = useState('');
+  const [password, setPassword] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState(null);
+
+  async function login() {
+    setError(null);
+    setSubmitting(true);
+    try {
+      const { httpStatus, body } = await postJson('/api/auth/login', { employeeId, password });
+      if (httpStatus !== 200) {
+        setError(body.message || 'Login failed.');
+        return;
+      }
+      goToRoleHome(body.role);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return h('div', { className: 'card' },
+    error && h('div', { className: 'callout callout-danger', style: { marginBottom: '1rem' } }, error),
+    h('div', { className: 'field' },
+      h('label', null, 'Employee ID'),
+      h('input', { type: 'text', placeholder: 'e.g. CO-001', value: employeeId, onChange: (e) => setEmployeeId(e.target.value) })
+    ),
+    h('div', { className: 'field' },
+      h('label', null, 'Password'),
+      h('input', {
+        type: 'password', value: password, onChange: (e) => setPassword(e.target.value),
+        onKeyDown: (e) => { if (e.key === 'Enter') login(); },
+      })
+    ),
+    h('button', {
+      className: 'btn btn-primary', onClick: login, disabled: submitting || !employeeId || !password,
+    }, submitting ? 'Logging in…' : 'Log in')
+  );
+}
+
+function DemoLoginRow() {
+  const [error, setError] = useState(null);
+
+  async function demoLogin(role) {
+    setError(null);
+    try {
+      const { httpStatus, body } = await postJson('/api/auth/demo-login', { role });
+      if (httpStatus !== 200) {
+        setError(body.message || 'No demo account available for this role -- seed the database first.');
+        return;
+      }
+      goToRoleHome(body.role);
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  return h('div', { className: 'demo-section' },
+    h('div', { className: 'demo-title' },
+      'Demo login', h('span', { className: 'demo-badge' }, 'Judging shortcut')
+    ),
+    error && h('div', { className: 'callout callout-danger', style: { marginBottom: '0.6rem' } }, error),
+    h('div', { className: 'demo-grid' },
+      ROLES.map((r) => h('button', {
+        key: r.key, className: 'btn btn-secondary demo-btn', onClick: () => demoLogin(r.key),
+      }, `${r.icon} ${r.label}`))
+    )
+  );
+}
+
+function App() {
+  const [role, setRole] = useState('farmer');
+
+  return h('div', null,
+    h('h1', null, 'Kisan Slot'),
+    h('p', { className: 'sub' }, 'One login for farmers, centre officers, district officers, and assisted operators.'),
+
+    h(RoleGrid, { role, onPick: setRole }),
+
+    role === 'farmer' ? h(FarmerLogin) : h(EmployeeLogin, { role, key: role }),
+
+    h(DemoLoginRow)
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(h(App));
+</script>
+</body>
+</html>

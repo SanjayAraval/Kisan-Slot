@@ -31,6 +31,22 @@ async function loadFarmerWithLandRecord(client, farmerId) {
   return result.rows[0] || null;
 }
 
+// The bookings table's own unique constraint only stops a *second* booking
+// at the same centre-day (see its schema comment) -- a farmer could still
+// book two different centres for the same date. This is the check that
+// actually enforces "one active booking per farmer per date", checked
+// before any capacity is touched.
+async function hasActiveBookingOnDate(client, farmerId, date) {
+  const result = await client.query(
+    `SELECT b.id FROM bookings b
+     JOIN centre_day cd ON cd.id = b.centre_day_id
+     WHERE b.farmer_id = $1 AND cd.service_date = $2 AND b.status IN ('booked', 'checked_in')
+     LIMIT 1`,
+    [farmerId, date]
+  );
+  return result.rowCount > 0;
+}
+
 // Runs steps 1-5 of the booking flow inside the caller's transaction.
 // The caller (the route) decides whether to COMMIT (BOOKED) or ROLLBACK
 // (everything else) based on the returned `type`.
@@ -38,6 +54,13 @@ async function attemptBooking(client, { farmerId, quintals, centreId, date }) {
   const farmer = await loadFarmerWithLandRecord(client, farmerId);
   if (!farmer) {
     return { type: 'NOT_FOUND', message: 'farmer not found' };
+  }
+
+  if (await hasActiveBookingOnDate(client, farmerId, date)) {
+    return {
+      type: 'ALREADY_BOOKED',
+      message: 'This farmer already has an active booking for this date.',
+    };
   }
 
   // Step 1: no land record at all -- flag for a human, don't reject.
@@ -102,15 +125,33 @@ async function attemptBooking(client, { farmerId, quintals, centreId, date }) {
   const sequence = countResult.rows[0].n + 1;
   const token = `${centreCode}-${date.replace(/-/g, '')}-${String(sequence).padStart(4, '0')}`;
 
-  const bookingResult = await client.query(
-    // id generated client-side rather than left to the column's DEFAULT
-    // gen_random_uuid() -- consistent with upsertCentreDay (see its
-    // comment): this exact query text can run many times per process.
-    `INSERT INTO bookings (id, centre_day_id, farmer_id, token, declared_quantity_quintals, bags_reserved, booking_channel)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)
-     RETURNING id, token, booked_at`,
-    [crypto.randomUUID(), centreDayRow.id, farmerId, token, quintals, bagsNeeded, 'app']
-  );
+  let bookingResult;
+  try {
+    bookingResult = await client.query(
+      // id generated client-side rather than left to the column's DEFAULT
+      // gen_random_uuid() -- consistent with upsertCentreDay (see its
+      // comment): this exact query text can run many times per process.
+      `INSERT INTO bookings (id, centre_day_id, farmer_id, token, declared_quantity_quintals, bags_reserved, booking_channel)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING id, token, booked_at`,
+      [crypto.randomUUID(), centreDayRow.id, farmerId, token, quintals, bagsNeeded, 'app']
+    );
+  } catch (err) {
+    // 23505 = unique_violation. The only realistic cause on this INSERT is
+    // (centre_day_id, farmer_id) -- one active booking per farmer per
+    // centre-day (see the schema comment); a token collision would need
+    // two bookings to race to the same sequence number, which the COUNT
+    // above makes vanishingly unlikely. The caller rolls back the
+    // transaction for any non-BOOKED result, which also undoes the bag
+    // claim above.
+    if (err.code === '23505') {
+      return {
+        type: 'ALREADY_BOOKED',
+        message: 'This farmer already has a booking for this centre and date.',
+      };
+    }
+    throw err;
+  }
 
   const { bags_booked: bagsBooked, bags_capacity: bagsCapacity } = claim.rows[0];
   const remainingBags = Number(bagsCapacity) - Number(bagsBooked);

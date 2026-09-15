@@ -4,13 +4,18 @@ const request = require('supertest');
 const { createApp } = require('./app');
 const { createTestPool } = require('./testUtils/pgMemDb');
 const { insertCentre, insertDailyInputs, DAILY_INPUT_BASELINE } = require('./testUtils/fixtures');
+const { districtOfficerAgent } = require('./testUtils/authTestHelpers');
 
 const DATE = '2026-09-05';
 
 function setup() {
   const pool = createTestPool();
   const app = createApp(pool);
-  return { pool, app };
+  // District officer for 'Medak' -- matches insertCentre's default
+  // district, so this one identity is authorized for every centre these
+  // tests create without needing to know its id up front.
+  const agent = districtOfficerAgent(app);
+  return { pool, app, agent };
 }
 
 function fullDeclarationBody(overrides = {}) {
@@ -37,10 +42,10 @@ function fullDeclarationBody(overrides = {}) {
 
 describe('GET /api/centres', () => {
   test('lists centres', async () => {
-    const { app, pool } = setup();
+    const { app, agent, pool } = setup();
     await insertCentre(pool, { name: 'Medak APMC Mandi', code: 'MDK-01' });
 
-    const res = await request(app).get('/api/centres');
+    const res = await agent.get('/api/centres');
     expect(res.status).toBe(200);
     expect(res.body).toHaveLength(1);
     expect(res.body[0].code).toBe('MDK-01');
@@ -49,38 +54,38 @@ describe('GET /api/centres', () => {
 
 describe('GET /api/centres/:id/declaration', () => {
   test('404s when nothing is declared for that date', async () => {
-    const { app, pool } = setup();
+    const { app, agent, pool } = setup();
     const centreId = await insertCentre(pool);
 
-    const res = await request(app).get(`/api/centres/${centreId}/declaration`).query({ date: DATE });
+    const res = await agent.get(`/api/centres/${centreId}/declaration`).query({ date: DATE });
     expect(res.status).toBe(404);
   });
 
   test('returns the current declared inputs', async () => {
-    const { app, pool } = setup();
+    const { app, agent, pool } = setup();
     const centreId = await insertCentre(pool);
     await insertDailyInputs(pool, { centreId, serviceDate: DATE, overrides: { gunnyBagsAvailable: 4321 } });
 
-    const res = await request(app).get(`/api/centres/${centreId}/declaration`).query({ date: DATE });
+    const res = await agent.get(`/api/centres/${centreId}/declaration`).query({ date: DATE });
     expect(res.status).toBe(200);
     expect(res.body.inputs.gunnyBagsAvailable).toBe(4321);
     expect(res.body.inputs.hamaliGangCount).toBe(DAILY_INPUT_BASELINE.hamaliGangCount);
   });
 
   test('400s without a date', async () => {
-    const { app, pool } = setup();
+    const { app, agent, pool } = setup();
     const centreId = await insertCentre(pool);
-    const res = await request(app).get(`/api/centres/${centreId}/declaration`);
+    const res = await agent.get(`/api/centres/${centreId}/declaration`);
     expect(res.status).toBe(400);
   });
 });
 
 describe('POST /api/centres/:id/declaration', () => {
   test('creates a first declaration and returns the recomputed capacity', async () => {
-    const { app, pool } = setup();
+    const { app, agent, pool } = setup();
     const centreId = await insertCentre(pool);
 
-    const res = await request(app)
+    const res = await agent
       .post(`/api/centres/${centreId}/declaration`)
       .send(fullDeclarationBody({ truckEvacuationCapacity: 20 })); // -> binds truckEvacuation
 
@@ -92,7 +97,7 @@ describe('POST /api/centres/:id/declaration', () => {
     expect(res.body.constraints.truckEvacuation).toBe(20);
 
     // Round-trips through a subsequent GET.
-    const getRes = await request(app).get(`/api/centres/${centreId}/declaration`).query({ date: DATE });
+    const getRes = await agent.get(`/api/centres/${centreId}/declaration`).query({ date: DATE });
     expect(getRes.status).toBe(200);
     expect(getRes.body.inputs.truckEvacuationCapacity).toBe(20);
 
@@ -103,11 +108,11 @@ describe('POST /api/centres/:id/declaration', () => {
   });
 
   test('a second declaration for the same date corrects the first (upsert, not a new row)', async () => {
-    const { app, pool } = setup();
+    const { app, agent, pool } = setup();
     const centreId = await insertCentre(pool);
 
-    await request(app).post(`/api/centres/${centreId}/declaration`).send(fullDeclarationBody({ gunnyBagsAvailable: 1000 }));
-    const second = await request(app)
+    await agent.post(`/api/centres/${centreId}/declaration`).send(fullDeclarationBody({ gunnyBagsAvailable: 1000 }));
+    const second = await agent
       .post(`/api/centres/${centreId}/declaration`)
       .send(fullDeclarationBody({ gunnyBagsAvailable: 6000, truckEvacuationCapacity: 15 }));
 
@@ -122,10 +127,10 @@ describe('POST /api/centres/:id/declaration', () => {
   });
 
   test('rejects an incomplete declaration with 400', async () => {
-    const { app, pool } = setup();
+    const { app, agent, pool } = setup();
     const centreId = await insertCentre(pool);
 
-    const res = await request(app)
+    const res = await agent
       .post(`/api/centres/${centreId}/declaration`)
       .send({ date: DATE, weighingMode: 'weighbridge' });
 
@@ -134,10 +139,10 @@ describe('POST /api/centres/:id/declaration', () => {
   });
 
   test('platform mode requires secondsPerBag/avgBagsPerLot instead of a cycle time', async () => {
-    const { app, pool } = setup();
+    const { app, agent, pool } = setup();
     const centreId = await insertCentre(pool);
 
-    const res = await request(app)
+    const res = await agent
       .post(`/api/centres/${centreId}/declaration`)
       .send(fullDeclarationBody({ weighingMode: 'platform', weighbridgeAvgCycleMinutes: null }));
 
@@ -146,12 +151,12 @@ describe('POST /api/centres/:id/declaration', () => {
   });
 
   test('reports every tied constraint, not just the first, when several bind at once', async () => {
-    const { app, pool } = setup();
+    const { app, agent, pool } = setup();
     const centreId = await insertCentre(pool);
 
     // weighbridge=60, hamali=60, gunny=60, truckEvacuation=60, yardSpace=60,
     // moistureTesting=500 -- five-way tie at 60.
-    const res = await request(app)
+    const res = await agent
       .post(`/api/centres/${centreId}/declaration`)
       .send(fullDeclarationBody());
 
@@ -164,10 +169,61 @@ describe('POST /api/centres/:id/declaration', () => {
   });
 
   test('404s for an unknown centre', async () => {
-    const { app } = setup();
-    const res = await request(app)
+    const { app, agent } = setup();
+    const res = await agent
       .post('/api/centres/00000000-0000-0000-0000-000000000000/declaration')
       .send(fullDeclarationBody());
     expect(res.status).toBe(404);
+  });
+
+  describe('bags, gangs and trucks must be positive integers within plausible bounds', () => {
+    test('rejects zero for gunny bags, hamali gangs and truck evacuation', async () => {
+      const { app, agent, pool } = setup();
+      const centreId = await insertCentre(pool);
+
+      const bags = await agent.post(`/api/centres/${centreId}/declaration`).send(fullDeclarationBody({ gunnyBagsAvailable: 0 }));
+      expect(bags.status).toBe(400);
+      expect(bags.body.errors.join(' ')).toMatch(/gunnyBagsAvailable/);
+
+      const gangs = await agent.post(`/api/centres/${centreId}/declaration`).send(fullDeclarationBody({ hamaliGangCount: 0 }));
+      expect(gangs.status).toBe(400);
+      expect(gangs.body.errors.join(' ')).toMatch(/hamaliGangCount/);
+
+      const trucks = await agent.post(`/api/centres/${centreId}/declaration`).send(fullDeclarationBody({ truckEvacuationCapacity: 0 }));
+      expect(trucks.status).toBe(400);
+      expect(trucks.body.errors.join(' ')).toMatch(/truckEvacuationCapacity/);
+    });
+
+    test('rejects negative values', async () => {
+      const { app, agent, pool } = setup();
+      const centreId = await insertCentre(pool);
+
+      const res = await agent
+        .post(`/api/centres/${centreId}/declaration`)
+        .send(fullDeclarationBody({ hamaliGangCount: -3 }));
+      expect(res.status).toBe(400);
+    });
+
+    test('rejects fractional values', async () => {
+      const { app, agent, pool } = setup();
+      const centreId = await insertCentre(pool);
+
+      const res = await agent
+        .post(`/api/centres/${centreId}/declaration`)
+        .send(fullDeclarationBody({ gunnyBagsAvailable: 100.5 }));
+      expect(res.status).toBe(400);
+      expect(res.body.errors.join(' ')).toMatch(/gunnyBagsAvailable/);
+    });
+
+    test('rejects values above the plausible ceiling', async () => {
+      const { app, agent, pool } = setup();
+      const centreId = await insertCentre(pool);
+
+      const res = await agent
+        .post(`/api/centres/${centreId}/declaration`)
+        .send(fullDeclarationBody({ truckEvacuationCapacity: 5000 }));
+      expect(res.status).toBe(400);
+      expect(res.body.errors.join(' ')).toMatch(/truckEvacuationCapacity/);
+    });
   });
 });

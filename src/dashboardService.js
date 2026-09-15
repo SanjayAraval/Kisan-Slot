@@ -117,9 +117,11 @@ function alertReason(row) {
 // Everything the district officer dashboard needs for one date, in one
 // read: header stats, the sorted centre grid, at-risk alerts drawn from
 // it, and the evacuation backlog. Centres without a declaration on file
-// for `date` are simply absent -- not "operating" that day.
-async function loadDistrictDashboard(pool, date) {
-  const centresResult = await pool.query('SELECT id, name, code, centre_type FROM centres ORDER BY name');
+// for `date` are simply absent -- not "operating" that day. Scoped to
+// `district` throughout -- a district officer sees their own district,
+// never the whole state.
+async function loadDistrictDashboard(pool, date, district) {
+  const centresResult = await pool.query('SELECT id, name, code, centre_type FROM centres WHERE district = $1 ORDER BY name', [district]);
 
   const rows = [];
   for (const centre of centresResult.rows) {
@@ -132,8 +134,9 @@ async function loadDistrictDashboard(pool, date) {
     `SELECT COUNT(*)::int AS n
      FROM bookings b
      JOIN centre_day cd ON cd.id = b.centre_day_id
-     WHERE cd.service_date = $1 AND b.status != 'cancelled' AND b.status != 'deferred'`,
-    [date]
+     JOIN centres c ON c.id = cd.centre_id
+     WHERE cd.service_date = $1 AND c.district = $2 AND b.status != 'cancelled' AND b.status != 'deferred'`,
+    [date, district]
   );
 
   const alerts = rows

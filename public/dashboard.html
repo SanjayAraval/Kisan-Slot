@@ -41,6 +41,7 @@
   .bar-bg { background: var(--ink-10); border-radius: 4px; height: 0.5rem; width: 100%; overflow: hidden; }
   .bar-fill { background: var(--red); height: 100%; }
   .bar-fill.ok { background: var(--green); }
+  .link-btn { background: none; border: none; color: var(--green); font-weight: 600; cursor: pointer; padding: 0; text-decoration: underline; font-size: inherit; }
 </style>
 </head>
 <body>
@@ -68,10 +69,21 @@ const ALERT_REASON_LABELS = {
   low_bag_cover: 'Low gunny bag cover',
 };
 
+// Formats using the browser's local calendar date -- never toISOString(),
+// which converts to UTC and silently shifts the date for any timezone
+// ahead of UTC (e.g. IST) during the hours after local midnight but
+// before UTC midnight.
+function formatLocalDate(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 function todayPlusOne() {
   const d = new Date();
   d.setDate(d.getDate() + 1);
-  return d.toISOString().slice(0, 10);
+  return formatLocalDate(d);
 }
 
 async function fetchJson(url, options) {
@@ -212,10 +224,23 @@ function EvacuationBacklog({ rows }) {
 }
 
 function App() {
+  const [session, setSession] = React.useState({ loading: true, name: null });
   const [date, setDate] = React.useState(todayPlusOne());
   const [dashboard, setDashboard] = React.useState(null);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState(null);
+
+  // District-wide view -- district_officer only. Anyone else (or anyone
+  // not logged in) is sent to the shared login screen.
+  React.useEffect(() => {
+    fetch('/api/auth/me')
+      .then((res) => res.ok ? res.json() : Promise.reject())
+      .then((me) => {
+        if (me.role !== 'district_officer') return Promise.reject();
+        setSession({ loading: false, name: me.name });
+      })
+      .catch(() => { window.location.href = '/login.html'; });
+  }, []);
 
   const load = React.useCallback(async () => {
     setLoading(true);
@@ -230,7 +255,16 @@ function App() {
     }
   }, [date]);
 
-  React.useEffect(() => { load(); }, [load]);
+  React.useEffect(() => { if (!session.loading) load(); }, [load, session.loading]);
+
+  async function logout() {
+    await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
+    window.location.href = '/login.html';
+  }
+
+  if (session.loading) {
+    return h('div', null, h('p', { className: 'sub' }, 'Checking your session…'));
+  }
 
   const summary = dashboard && dashboard.summary;
 
@@ -240,7 +274,11 @@ function App() {
     h('div', { className: 'nav' },
       h('a', { href: '/declaration.html' }, "← Tonight's Declaration"),
       ' · ',
-      h('a', { href: '/farmer.html' }, 'Farmer screen →')
+      h('a', { href: '/farmer.html' }, 'Farmer screen →'),
+      ' · ',
+      h('span', { style: { color: 'var(--ink-60)' } }, `Logged in as ${session.name}`),
+      ' · ',
+      h('button', { className: 'link-btn', onClick: logout }, 'Log out')
     ),
 
     h('div', { className: 'date-row' },

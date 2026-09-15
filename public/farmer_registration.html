@@ -1,0 +1,832 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Farmer Registration — Procurement Platform</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Mukta:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="/validation.js"></script>
+<style>
+  :root{
+    --green:#1b5e3a; --green-dark:#123f28; --green-soft:#e7f1ea;
+    --gold:#c98a00; --gold-soft:#fcf2d9;
+    --ink:#1a2420; --muted:#5d6b64; --line:#dfe5e1;
+    --bg:#f5f7f4; --card:#ffffff;
+    --ok:#1b7a45; --ok-bg:#e6f4ec;
+    --wait:#9a6b00; --wait-bg:#fbf1d6;
+    --bad:#b23a2e; --bad-bg:#fbe8e6;
+    --radius:14px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    font-family:'Mukta',system-ui,Arial,sans-serif;
+    background:var(--bg); color:var(--ink);
+    line-height:1.5; -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:640px;margin:0 auto;padding:0 16px 64px}
+
+  /* Header */
+  header{
+    background:var(--green); color:#fff;
+    border-radius:0 0 20px 20px;
+    padding:18px 18px 22px;
+    box-shadow:0 6px 20px rgba(18,63,40,.18);
+  }
+  .header-inner{max-width:640px;margin:0 auto}
+  .brandrow{display:flex;align-items:center;justify-content:space-between;gap:12px}
+  .brand{display:flex;align-items:center;gap:11px;min-width:0}
+  .brand .leaf{
+    width:40px;height:40px;flex:none;border-radius:11px;
+    background:rgba(255,255,255,.16);display:grid;place-items:center;font-size:22px
+  }
+  .brand h1{font-size:1.12rem;font-weight:700;line-height:1.15}
+  .brand p{font-size:.76rem;opacity:.82;font-weight:500}
+  .controls{display:flex;gap:8px;flex:none}
+  .lang{
+    display:flex;background:rgba(255,255,255,.14);border-radius:999px;padding:3px;
+  }
+  .lang button{
+    border:0;background:transparent;color:#fff;cursor:pointer;
+    font-family:inherit;font-weight:700;font-size:.8rem;
+    padding:6px 12px;border-radius:999px;transition:background .15s;
+  }
+  .lang button.on{background:#fff;color:var(--green-dark)}
+
+  .assist-toggle{
+    margin-top:16px;display:flex;align-items:center;gap:10px;
+    background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18);
+    padding:9px 13px;border-radius:11px;cursor:pointer;font-weight:600;font-size:.86rem;
+  }
+  .assist-toggle .sw{
+    width:38px;height:22px;border-radius:999px;background:rgba(255,255,255,.28);
+    position:relative;flex:none;transition:background .18s;
+  }
+  .assist-toggle .sw::after{
+    content:"";position:absolute;top:2px;left:2px;width:18px;height:18px;
+    border-radius:50%;background:#fff;transition:transform .18s;
+  }
+  .assist-toggle.on .sw{background:var(--gold)}
+  .assist-toggle.on .sw::after{transform:translateX(16px)}
+  .assist-note{font-size:.76rem;opacity:.82;font-weight:500}
+
+  /* Stepper */
+  .steps{display:flex;justify-content:space-between;margin:22px 4px 6px;position:relative}
+  .steps::before{
+    content:"";position:absolute;top:17px;left:8%;right:8%;height:3px;
+    background:var(--line);border-radius:3px;z-index:0;
+  }
+  .steps .prog{
+    content:"";position:absolute;top:17px;left:8%;height:3px;
+    background:var(--gold);border-radius:3px;z-index:1;transition:width .3s;
+  }
+  .step{position:relative;z-index:2;text-align:center;width:20%}
+  .step .dot{
+    width:36px;height:36px;border-radius:50%;margin:0 auto 5px;
+    background:#fff;border:3px solid var(--line);color:var(--muted);
+    display:grid;place-items:center;font-weight:800;font-size:.95rem;transition:.2s;
+  }
+  .step.done .dot{background:var(--green);border-color:var(--green);color:#fff}
+  .step.active .dot{background:#fff;border-color:var(--gold);color:var(--green-dark);
+    box-shadow:0 0 0 4px var(--gold-soft)}
+  .step small{font-size:.68rem;color:var(--muted);font-weight:600;display:block;line-height:1.1}
+  .step.active small{color:var(--green-dark)}
+
+  /* Card */
+  .card{
+    background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+    padding:22px;margin-top:22px;box-shadow:0 2px 10px rgba(20,40,30,.04);
+  }
+  .card-head{display:flex;align-items:center;gap:13px;margin-bottom:6px}
+  .card-head .ic{
+    width:44px;height:44px;flex:none;border-radius:12px;background:var(--green-soft);
+    display:grid;place-items:center;font-size:23px;
+  }
+  .card-head h2{font-size:1.24rem;font-weight:700;color:var(--green-dark)}
+  .card-head p{font-size:.84rem;color:var(--muted);font-weight:500}
+  .assist-banner{
+    display:none;align-items:center;gap:8px;background:var(--gold-soft);
+    color:#7a5600;border:1px solid #e6d49a;border-radius:10px;
+    padding:8px 12px;font-size:.8rem;font-weight:600;margin:14px 0 4px;
+  }
+  body.assist .assist-banner{display:flex}
+
+  label{display:block;font-weight:600;font-size:.9rem;margin:16px 0 6px}
+  .req{color:var(--bad)}
+  input,select{
+    width:100%;font-family:inherit;font-size:1rem;color:var(--ink);
+    padding:13px 14px;border:1.5px solid var(--line);border-radius:11px;background:#fff;
+    transition:border-color .15s,box-shadow .15s;
+  }
+  input:focus,select:focus{outline:none;border-color:var(--green);box-shadow:0 0 0 3px var(--green-soft)}
+  input.err{border-color:var(--bad);box-shadow:0 0 0 3px var(--bad-bg)}
+  .hint{font-size:.76rem;color:var(--muted);margin-top:5px}
+  .errmsg{font-size:.78rem;color:var(--bad);font-weight:600;margin-top:5px;display:none}
+  input.err ~ .errmsg{display:block}
+  .row2{display:flex;gap:12px}
+  .row2>div{flex:1}
+
+  .btn{
+    font-family:inherit;font-weight:700;font-size:1rem;cursor:pointer;border:0;
+    padding:14px 20px;border-radius:12px;transition:transform .06s,background .15s;
+  }
+  .btn:active{transform:translateY(1px)}
+  .btn-primary{background:var(--green);color:#fff;width:100%}
+  .btn-primary:hover{background:var(--green-dark)}
+  .btn-ghost{background:#fff;color:var(--green-dark);border:1.5px solid var(--line)}
+  .btn-ghost:hover{border-color:var(--green)}
+  .actions{display:flex;gap:12px;margin-top:24px}
+  .actions .btn-ghost{flex:none;padding-left:22px;padding-right:22px}
+  .actions .btn-primary{flex:1;width:auto}
+
+  /* OTP */
+  .otp-sent{
+    display:none;background:var(--green-soft);border:1px solid #c3ddcd;border-radius:11px;
+    padding:12px 14px;margin-top:14px;font-size:.86rem;
+  }
+  .otp-sent.show{display:block}
+  .otp-sent b{color:var(--green-dark)}
+  .otp-inputs{display:flex;gap:9px;margin-top:12px}
+  .otp-inputs input{text-align:center;font-size:1.3rem;font-weight:700;padding:12px 0;letter-spacing:1px}
+
+  /* Review */
+  .review-list{border:1px solid var(--line);border-radius:12px;overflow:hidden;margin-top:6px}
+  .review-list .r{display:flex;justify-content:space-between;gap:14px;padding:12px 15px;border-bottom:1px solid var(--line)}
+  .review-list .r:last-child{border-bottom:0}
+  .review-list .r:nth-child(odd){background:#fafbf9}
+  .review-list .k{color:var(--muted);font-size:.86rem;font-weight:600}
+  .review-list .v{font-weight:700;font-size:.92rem;text-align:right;word-break:break-word}
+
+  /* Verify result / success */
+  .result{text-align:center;padding:8px 4px 4px}
+  .result .badge{
+    width:76px;height:76px;border-radius:50%;margin:6px auto 14px;display:grid;place-items:center;font-size:38px;
+  }
+  .b-ok{background:var(--ok-bg);color:var(--ok)}
+  .b-wait{background:var(--wait-bg);color:var(--wait)}
+  .result h2{font-size:1.4rem;margin-bottom:6px}
+  .result .status-line{font-weight:700;font-size:.95rem;padding:6px 14px;border-radius:999px;display:inline-block;margin-bottom:12px}
+  .s-ok{background:var(--ok-bg);color:var(--ok)}
+  .s-wait{background:var(--wait-bg);color:var(--wait)}
+  .result p{color:var(--muted);font-size:.9rem;max-width:440px;margin:0 auto 6px}
+
+  .idcard{
+    background:linear-gradient(135deg,var(--green),var(--green-dark));color:#fff;
+    border-radius:16px;padding:20px;margin:20px 0 8px;text-align:left;position:relative;overflow:hidden;
+  }
+  .idcard::after{content:"🌾";position:absolute;right:-6px;bottom:-14px;font-size:88px;opacity:.13}
+  .idcard .lbl{font-size:.72rem;text-transform:none;opacity:.8;font-weight:600}
+  .idcard .fid{font-size:1.7rem;font-weight:800;letter-spacing:1px;margin:2px 0 12px}
+  .idcard .who{font-size:1.02rem;font-weight:700}
+  .idcard .meta{font-size:.82rem;opacity:.85;font-weight:500;margin-top:2px}
+
+  .checklist{text-align:left;margin:18px auto 0;max-width:440px}
+  .checklist .ci{display:flex;align-items:center;gap:10px;padding:8px 0;font-size:.9rem;font-weight:600}
+  .checklist .ci .m{width:26px;height:26px;border-radius:50%;flex:none;display:grid;place-items:center;font-size:.85rem;font-weight:800}
+  .m-ok{background:var(--ok-bg);color:var(--ok)}
+  .m-wait{background:var(--wait-bg);color:var(--wait)}
+
+  .footnote{text-align:center;font-size:.74rem;color:var(--muted);margin-top:26px;line-height:1.5}
+
+  .khasra-match{border-radius:11px;padding:11px 13px;margin-top:10px;font-size:.86rem}
+  .khasra-match.found{background:var(--ok-bg);border:1px solid #b9ddc7;color:#0f4a29}
+  .khasra-match.tenant{background:var(--wait-bg);border:1px solid #ecd58f;color:#6b4c00}
+  .khasra-match.missing{background:#f1f2ef;border:1px solid var(--line);color:var(--muted)}
+  .khasra-match .title{font-weight:700;margin-bottom:2px}
+
+  .session-badge{
+    margin-top:16px;display:flex;align-items:center;gap:10px;
+    background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18);
+    padding:9px 13px;border-radius:11px;font-weight:600;font-size:.86rem;
+  }
+
+  .hide{display:none}
+  @media (max-width:420px){
+    .brand h1{font-size:1rem}
+    .step small{font-size:.6rem}
+    .card{padding:18px 15px}
+  }
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-inner">
+    <div class="brandrow">
+      <div class="brand">
+        <div class="leaf">🌾</div>
+        <div>
+          <h1 data-t="appName">Kisan Procurement Portal</h1>
+          <p data-t="appSub">Farmer registration for MSP sale</p>
+        </div>
+      </div>
+      <div class="controls">
+        <div class="lang">
+          <button id="enBtn" class="on" onclick="setLang('en')">EN</button>
+          <button id="hiBtn" onclick="setLang('hi')">हिं</button>
+        </div>
+      </div>
+    </div>
+    <!-- Operator mode is now driven entirely by a real logged-in operator
+         session (checked on load, never a self-reported toggle) -- see
+         initSession() below. This badge is static; there is no click
+         handler, because a farmer visiting this page directly should
+         never be able to claim operator status on their own say-so. -->
+    <div class="session-badge hide" id="operatorBadge">
+      👥 <span id="operatorBadgeText"></span>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <!-- Stepper -->
+  <div class="steps" id="stepper">
+    <div class="prog" id="prog"></div>
+    <div class="step" data-step="0"><div class="dot">1</div><small data-t="s1">Mobile</small></div>
+    <div class="step" data-step="1"><div class="dot">2</div><small data-t="s2">Identity</small></div>
+    <div class="step" data-step="2"><div class="dot">3</div><small data-t="s3">Land</small></div>
+    <div class="step" data-step="3"><div class="dot">4</div><small data-t="s4">Bank</small></div>
+    <div class="step" data-step="4"><div class="dot">5</div><small data-t="s5">Verify</small></div>
+  </div>
+
+  <!-- STEP 1: Mobile + OTP -->
+  <section class="card" data-panel="0">
+    <div class="card-head">
+      <div class="ic">📱</div>
+      <div><h2 data-t="t1">Mobile number</h2><p data-t="d1">We'll send a one-time code by SMS</p></div>
+    </div>
+    <div class="assist-banner">👥 <span data-t="assistBanner">Operator mode — the code still goes to the farmer's own number</span></div>
+
+    <label data-t="l_mobile">Mobile number <span class="req">*</span></label>
+    <input id="mobile" type="tel" inputmode="tel" maxlength="14" placeholder="10-digit mobile number" oninput="mobileChars(this)">
+    <div class="errmsg" data-t="e_mobile">Enter a valid 10-digit mobile number</div>
+
+    <div class="otp-sent" id="otpSent"></div>
+    <div id="otpBlock" class="hide">
+      <label data-t="l_otp">Enter 6-digit code <span class="req">*</span></label>
+      <div class="otp-inputs">
+        <input maxlength="1" inputmode="numeric" oninput="otpHop(this,0)">
+        <input maxlength="1" inputmode="numeric" oninput="otpHop(this,1)">
+        <input maxlength="1" inputmode="numeric" oninput="otpHop(this,2)">
+        <input maxlength="1" inputmode="numeric" oninput="otpHop(this,3)">
+        <input maxlength="1" inputmode="numeric" oninput="otpHop(this,4)">
+        <input maxlength="1" inputmode="numeric" oninput="otpHop(this,5)">
+      </div>
+      <div class="errmsg" id="otpErr" data-t="e_otp" style="display:none">Incorrect code. For the demo, use 123456</div>
+    </div>
+
+    <div class="actions">
+      <button class="btn btn-primary" id="mobileBtn" onclick="sendOrVerifyOtp()" data-t="b_sendOtp">Send code</button>
+    </div>
+  </section>
+
+  <!-- STEP 2: Identity -->
+  <section class="card hide" data-panel="1">
+    <div class="card-head">
+      <div class="ic">🪪</div>
+      <div><h2 data-t="t2">Identity details</h2><p data-t="d2">As per your Aadhaar</p></div>
+    </div>
+    <div class="assist-banner">👥 <span data-t="assistBanner2">Operator mode — enter the farmer's details</span></div>
+
+    <label data-t="l_name">Full name <span class="req">*</span></label>
+    <input id="name" placeholder="Farmer's full name">
+    <div class="errmsg" data-t="e_name">Name is required</div>
+
+    <label data-t="l_aadhaar">Aadhaar number <span class="req">*</span></label>
+    <input id="aadhaar" inputmode="numeric" maxlength="12" placeholder="12-digit Aadhaar" oninput="digitsOnly(this)">
+    <div class="hint" data-t="h_aadhaar">In production this is verified by UIDAI eKYC / biometric</div>
+    <div class="errmsg" data-t="e_aadhaar">Aadhaar must be exactly 12 digits</div>
+
+    <div class="row2">
+      <div>
+        <label data-t="l_village">Village <span class="req">*</span></label>
+        <input id="village" placeholder="Village">
+        <div class="errmsg" data-t="e_village">Required</div>
+      </div>
+      <div>
+        <label data-t="l_district">District <span class="req">*</span></label>
+        <input id="district" placeholder="District">
+        <div class="errmsg" data-t="e_district">Required</div>
+      </div>
+    </div>
+
+    <label data-t="l_crop">Crop <span class="req">*</span></label>
+    <select id="crop">
+      <option value="" data-t="opt_choose">Choose crop…</option>
+      <option value="Wheat" data-t="opt_wheat">Wheat</option>
+      <option value="Paddy" data-t="opt_paddy">Paddy (Rice)</option>
+      <option value="Gram" data-t="opt_gram">Gram</option>
+      <option value="Mustard" data-t="opt_mustard">Mustard</option>
+    </select>
+    <div class="errmsg" data-t="e_crop">Please choose a crop</div>
+
+    <div class="actions">
+      <button class="btn btn-ghost" onclick="go(0)" data-t="b_back">Back</button>
+      <button class="btn btn-primary" onclick="nextFrom(1)" data-t="b_continue">Continue</button>
+    </div>
+  </section>
+
+  <!-- STEP 3: Land -->
+  <section class="card hide" data-panel="2">
+    <div class="card-head">
+      <div class="ic">🌱</div>
+      <div><h2 data-t="t3">Land records</h2><p data-t="d3">Looked up from the state revenue database</p></div>
+    </div>
+    <div class="assist-banner">👥 <span data-t="assistBanner3">Operator mode — enter the farmer's land record</span></div>
+
+    <label data-t="l_khasra">Khasra / Khatauni number <span class="req">*</span></label>
+    <input id="khasra" placeholder="e.g. KH-1024" oninput="this.value=this.value.toUpperCase()" onblur="lookupKhasra()">
+    <div class="hint" data-t="h_khasra">Looked up live against the land records database as you type.</div>
+    <div class="errmsg" data-t="e_khasra">Land record number is required</div>
+    <div id="khasraMatch" class="khasra-match hide"></div>
+
+    <label data-t="l_landsize">Land size (acres) <span class="req">*</span></label>
+    <input id="landsize" inputmode="decimal" placeholder="e.g. 3.5" oninput="decimalOnly(this)">
+    <div class="errmsg" data-t="e_landsize">Enter land size in acres</div>
+
+    <label data-t="l_qty">Quantity to sell (quintals) <span class="req">*</span></label>
+    <input id="qty" inputmode="decimal" placeholder="e.g. 40" oninput="decimalOnly(this)">
+    <div class="hint" data-t="h_qty">Sanity-checked against land size to prevent over-declaration</div>
+    <div class="errmsg" id="qtyErr" data-t="e_qty">Quantity looks too high for this land size</div>
+
+    <div class="actions">
+      <button class="btn btn-ghost" onclick="go(1)" data-t="b_back">Back</button>
+      <button class="btn btn-primary" onclick="nextFrom(2)" data-t="b_continue">Continue</button>
+    </div>
+  </section>
+
+  <!-- STEP 4: Bank -->
+  <section class="card hide" data-panel="3">
+    <div class="card-head">
+      <div class="ic">🏦</div>
+      <div><h2 data-t="t4">Bank details</h2><p data-t="d4">Where MSP payment will be credited</p></div>
+    </div>
+    <div class="assist-banner">👥 <span data-t="assistBanner4">Operator mode — enter the farmer's bank account</span></div>
+
+    <label data-t="l_acc">Account number <span class="req">*</span></label>
+    <input id="acc" inputmode="numeric" maxlength="18" placeholder="Bank account number" oninput="digitsOnly(this)">
+    <div class="errmsg" data-t="e_acc">Account number is required</div>
+
+    <label data-t="l_acc2">Re-enter account number <span class="req">*</span></label>
+    <input id="acc2" inputmode="numeric" maxlength="18" placeholder="Confirm account number" oninput="digitsOnly(this)">
+    <div class="errmsg" data-t="e_acc2">Account numbers do not match</div>
+
+    <label data-t="l_ifsc">IFSC code <span class="req">*</span></label>
+    <input id="ifsc" maxlength="11" placeholder="e.g. SBIN0001234" oninput="this.value=this.value.toUpperCase()">
+    <div class="hint" data-t="h_ifsc">Aadhaar must be linked to this account for PFMS payment</div>
+    <div class="errmsg" data-t="e_ifsc">Enter a valid IFSC (e.g. SBIN0001234)</div>
+
+    <div class="actions">
+      <button class="btn btn-ghost" onclick="go(2)" data-t="b_back">Back</button>
+      <button class="btn btn-primary" onclick="nextFrom(3)" data-t="b_review">Review</button>
+    </div>
+  </section>
+
+  <!-- STEP 5: Review + Verify -->
+  <section class="card hide" data-panel="4">
+    <div id="reviewView">
+      <div class="card-head">
+        <div class="ic">📋</div>
+        <div><h2 data-t="t5">Review &amp; verify</h2><p data-t="d5">Check details, then run verification</p></div>
+      </div>
+      <div class="review-list" id="reviewList"></div>
+      <div class="actions">
+        <button class="btn btn-ghost" onclick="go(3)" data-t="b_back">Back</button>
+        <button class="btn btn-primary" onclick="runVerify()" data-t="b_verify">Verify &amp; register</button>
+      </div>
+    </div>
+
+    <div id="resultView" class="hide"></div>
+  </section>
+
+  <div class="footnote" data-t="foot">
+    Demo prototype for SIH 26032. Verification, OTP and bank checks are simulated — in production these call UIDAI eKYC, API Setu / DigiLocker and state DILRMP land records with the farmer's consent.
+  </div>
+</div>
+
+<script>
+/* ---------- Bilingual strings ---------- */
+const T = {
+  en:{
+    appName:"Kisan Procurement Portal", appSub:"Farmer registration for MSP sale",
+    assistLabel:"Assisted registration (operator mode)",
+    assistNote:"For a CSC/centre operator registering on a farmer's behalf",
+    assistBanner:"Operator mode — the code still goes to the farmer's own number",
+    assistBanner2:"Operator mode — enter the farmer's details",
+    assistBanner3:"Operator mode — enter the farmer's land record",
+    assistBanner4:"Operator mode — enter the farmer's bank account",
+    s1:"Mobile",s2:"Identity",s3:"Land",s4:"Bank",s5:"Verify",
+    t1:"Mobile number",d1:"We'll send a one-time code by SMS",
+    l_mobile:"Mobile number",e_mobile:"Enter a valid 10-digit mobile number",
+    otpMsg:"Code sent to your mobile number.",
+    otpMsgDev:"Demo mode -- your code is",
+    l_otp:"Enter 6-digit code",e_otp:"Incorrect or expired code.",
+    b_sendOtp:"Send code",b_verifyOtp:"Verify code",
+    e_mobileTaken:"This mobile number is already registered -- log in instead.",
+    operatorActiveLabel:"Operator mode — registering on behalf of a farmer",
+    khasraFound:"Match found: {name}, {village} -- {acres} ac",
+    khasraTenant:"Registered under a different name ({name}) -- you'll be marked as a tenant cultivator pending officer review.",
+    khasraMissing:"No matching land record. You can still continue -- an officer will verify this manually.",
+    t2:"Identity details",d2:"As per your Aadhaar",
+    l_name:"Full name",e_name:"Name is required",
+    l_aadhaar:"Aadhaar number",h_aadhaar:"In production this is verified by UIDAI eKYC / biometric",
+    e_aadhaar:"Aadhaar must be exactly 12 digits",
+    l_village:"Village",e_village:"Required",l_district:"District",e_district:"Required",
+    l_crop:"Crop",e_crop:"Please choose a crop",
+    opt_choose:"Choose crop…",opt_wheat:"Wheat",opt_paddy:"Paddy (Rice)",opt_gram:"Gram",opt_mustard:"Mustard",
+    t3:"Land records",d3:"Looked up from the state revenue database",
+    l_khasra:"Khasra / Khatauni number",
+    h_khasra:"Looked up live against the land records database as you type.",
+    e_khasra:"Land record number is required",
+    l_landsize:"Land size (acres)",e_landsize:"Enter land size in acres",
+    l_qty:"Quantity to sell (quintals)",h_qty:"Sanity-checked against land size to prevent over-declaration",
+    e_qty:"Quantity looks too high for this land size",
+    t4:"Bank details",d4:"Where MSP payment will be credited",
+    l_acc:"Account number",e_acc:"Account number is required",
+    l_acc2:"Re-enter account number",e_acc2:"Account numbers do not match",
+    l_ifsc:"IFSC code",h_ifsc:"Aadhaar must be linked to this account for PFMS payment",
+    e_ifsc:"Enter a valid IFSC (e.g. SBIN0001234)",
+    t5:"Review & verify",d5:"Check details, then run verification",
+    b_back:"Back",b_continue:"Continue",b_review:"Review",b_verify:"Verify & register",
+    foot:"Demo prototype for SIH 26032. Verification, OTP and bank checks are simulated — in production these call UIDAI eKYC, API Setu / DigiLocker and state DILRMP land records with the farmer's consent.",
+    rv_name:"Name",rv_mobile:"Mobile",rv_aadhaar:"Aadhaar",rv_place:"Village / District",
+    rv_crop:"Crop",rv_khasra:"Land record",rv_land:"Land size",rv_qty:"Quantity",rv_bank:"Account",rv_ifsc:"IFSC",
+    ok_title:"Registration complete",ok_status:"✓ Verified",
+    ok_msg:"Identity, land record and bank checks all passed. The farmer can now book a procurement slot.",
+    wait_title:"Registered — pending verification",wait_status:"⏳ Provisional",
+    wait_msg:"The land record wasn't found in the revenue database. The farmer is registered provisionally and can complete verification at a CSC or the procurement centre — they are not blocked.",
+    idlabel:"Registered mobile number",
+    ck_id:"Identity (Aadhaar + OTP)",ck_land:"Land record",ck_bank:"Bank + Aadhaar link",
+    loginNow:"Log in now",
+    done:"Register another farmer",
+    err_register:"Registration failed. Please try again."
+  },
+  hi:{
+    appName:"किसान खरीद पोर्टल", appSub:"MSP बिक्री हेतु किसान पंजीकरण",
+    assistLabel:"सहायता पंजीकरण (ऑपरेटर मोड)",
+    assistNote:"CSC/केंद्र ऑपरेटर द्वारा किसान की ओर से पंजीकरण",
+    assistBanner:"ऑपरेटर मोड — कोड किसान के अपने नंबर पर ही जाएगा",
+    assistBanner2:"ऑपरेटर मोड — किसान का विवरण भरें",
+    assistBanner3:"ऑपरेटर मोड — किसान का भूमि रिकॉर्ड भरें",
+    assistBanner4:"ऑपरेटर मोड — किसान का बैंक खाता भरें",
+    s1:"मोबाइल",s2:"पहचान",s3:"भूमि",s4:"बैंक",s5:"सत्यापन",
+    t1:"मोबाइल नंबर",d1:"हम SMS द्वारा एक कोड भेजेंगे",
+    l_mobile:"मोबाइल नंबर",e_mobile:"वैध 10-अंकों का मोबाइल नंबर दर्ज करें",
+    otpMsg:"आपके मोबाइल नंबर पर कोड भेजा गया।",
+    otpMsgDev:"डेमो मोड -- आपका कोड है",
+    l_otp:"6-अंकों का कोड दर्ज करें",e_otp:"गलत या समाप्त हो चुका कोड।",
+    b_sendOtp:"कोड भेजें",b_verifyOtp:"कोड सत्यापित करें",
+    e_mobileTaken:"यह मोबाइल नंबर पहले से पंजीकृत है -- कृपया लॉगिन करें।",
+    operatorActiveLabel:"ऑपरेटर मोड — किसान की ओर से पंजीकरण",
+    khasraFound:"मिलान मिला: {name}, {village} -- {acres} एकड़",
+    khasraTenant:"अलग नाम ({name}) से पंजीकृत -- आपको बटाईदार के रूप में चिह्नित किया जाएगा, अधिकारी समीक्षा लंबित।",
+    khasraMissing:"कोई मिलता भूमि रिकॉर्ड नहीं मिला। आप आगे बढ़ सकते हैं -- एक अधिकारी इसे मैन्युअल रूप से सत्यापित करेगा।",
+    t2:"पहचान विवरण",d2:"आपके आधार के अनुसार",
+    l_name:"पूरा नाम",e_name:"नाम आवश्यक है",
+    l_aadhaar:"आधार नंबर",h_aadhaar:"उत्पादन में यह UIDAI eKYC / बायोमेट्रिक से सत्यापित होता है",
+    e_aadhaar:"आधार बिल्कुल 12 अंकों का होना चाहिए",
+    l_village:"गाँव",e_village:"आवश्यक",l_district:"जिला",e_district:"आवश्यक",
+    l_crop:"फसल",e_crop:"कृपया फसल चुनें",
+    opt_choose:"फसल चुनें…",opt_wheat:"गेहूँ",opt_paddy:"धान (चावल)",opt_gram:"चना",opt_mustard:"सरसों",
+    t3:"भूमि रिकॉर्ड",d3:"राज्य राजस्व डेटाबेस से प्राप्त",
+    l_khasra:"खसरा / खतौनी नंबर",
+    h_khasra:"टाइप करते ही भूमि रिकॉर्ड डेटाबेस से लाइव जाँचा जाता है।",
+    e_khasra:"भूमि रिकॉर्ड नंबर आवश्यक है",
+    l_landsize:"भूमि का आकार (एकड़)",e_landsize:"एकड़ में भूमि का आकार दर्ज करें",
+    l_qty:"बेचने की मात्रा (क्विंटल)",h_qty:"अधिक घोषणा रोकने हेतु भूमि आकार से जाँच",
+    e_qty:"इस भूमि आकार के लिए मात्रा बहुत अधिक लगती है",
+    t4:"बैंक विवरण",d4:"जहाँ MSP भुगतान जमा होगा",
+    l_acc:"खाता नंबर",e_acc:"खाता नंबर आवश्यक है",
+    l_acc2:"खाता नंबर पुनः दर्ज करें",e_acc2:"खाता नंबर मेल नहीं खाते",
+    l_ifsc:"IFSC कोड",h_ifsc:"PFMS भुगतान हेतु आधार इस खाते से लिंक होना चाहिए",
+    e_ifsc:"वैध IFSC दर्ज करें (उदा. SBIN0001234)",
+    t5:"समीक्षा और सत्यापन",d5:"विवरण जाँचें, फिर सत्यापन चलाएँ",
+    b_back:"पीछे",b_continue:"आगे",b_review:"समीक्षा",b_verify:"सत्यापित करें और पंजीकरण",
+    foot:"SIH 26032 हेतु डेमो प्रोटोटाइप। सत्यापन, OTP और बैंक जाँच सिम्युलेटेड हैं — उत्पादन में ये किसान की सहमति से UIDAI eKYC, API Setu / DigiLocker और राज्य DILRMP भूमि रिकॉर्ड को कॉल करते हैं।",
+    rv_name:"नाम",rv_mobile:"मोबाइल",rv_aadhaar:"आधार",rv_place:"गाँव / जिला",
+    rv_crop:"फसल",rv_khasra:"भूमि रिकॉर्ड",rv_land:"भूमि आकार",rv_qty:"मात्रा",rv_bank:"खाता",rv_ifsc:"IFSC",
+    ok_title:"पंजीकरण पूर्ण",ok_status:"✓ सत्यापित",
+    ok_msg:"पहचान, भूमि रिकॉर्ड और बैंक जाँच सभी पास हुईं। किसान अब खरीद स्लॉट बुक कर सकते हैं।",
+    wait_title:"पंजीकृत — सत्यापन लंबित",wait_status:"⏳ अस्थायी",
+    wait_msg:"भूमि रिकॉर्ड राजस्व डेटाबेस में नहीं मिला। किसान अस्थायी रूप से पंजीकृत है और CSC या खरीद केंद्र पर सत्यापन पूरा कर सकता है — वे अवरुद्ध नहीं हैं।",
+    idlabel:"पंजीकृत मोबाइल नंबर",
+    ck_id:"पहचान (आधार + OTP)",ck_land:"भूमि रिकॉर्ड",ck_bank:"बैंक + आधार लिंक",
+    loginNow:"अभी लॉगिन करें",
+    done:"अन्य किसान पंजीकृत करें",
+    err_register:"पंजीकरण विफल रहा। कृपया पुनः प्रयास करें।"
+  }
+};
+
+let lang='en', step=0, otpStage=false;
+let isOperator=false; // set by initSession() from the real logged-in session -- never client-toggled
+let khasraMatch=null; // { id, farmerName, village, extentAcres, crop } | null, from the live lookup
+
+function interpolate(str, vars){
+  if(!vars) return str;
+  return Object.keys(vars).reduce((s,k)=>s.split('{'+k+'}').join(vars[k]), str);
+}
+function t(k, vars){
+  const raw = (T[lang][k]!==undefined)?T[lang][k]:k;
+  return interpolate(raw, vars);
+}
+
+async function postJson(url, body){
+  const res = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body||{}) });
+  const json = await res.json().catch(()=>({}));
+  return { httpStatus: res.status, body: json };
+}
+
+// Real logged-in operator session only -- there is deliberately no way
+// for a plain visitor to flip this on themselves, since the server
+// stamps registered_by_operator_id from this same session, never from
+// anything the client sends.
+async function initSession(){
+  try{
+    const res = await fetch('/api/auth/me');
+    if(res.status!==200) return;
+    const me = await res.json();
+    if(me.role==='operator'){
+      isOperator=true;
+      document.body.classList.add('assist');
+      const badge=document.getElementById('operatorBadge');
+      badge.classList.remove('hide');
+      document.getElementById('operatorBadgeText').textContent=t('operatorActiveLabel')+(me.name?(' — '+me.name):'');
+    }
+  }catch(err){ /* not logged in / offline -- proceed as self-service */ }
+}
+function applyLang(){
+  document.documentElement.lang=lang;
+  document.querySelectorAll('[data-t]').forEach(el=>{
+    const k=el.getAttribute('data-t');
+    if(T[lang][k]!==undefined) el.textContent=T[lang][k];
+  });
+  // dynamic bits
+  if(step===4 && document.getElementById('resultView').classList.contains('hide')) buildReview();
+  if(khasraMatch) lookupKhasra();
+  if(isOperator){
+    const badgeText=document.getElementById('operatorBadgeText');
+    if(badgeText) badgeText.textContent=t('operatorActiveLabel');
+  }
+}
+function setLang(l){
+  lang=l;
+  document.getElementById('enBtn').classList.toggle('on',l==='en');
+  document.getElementById('hiBtn').classList.toggle('on',l==='hi');
+  applyLang();
+}
+/* ---------- input helpers ---------- */
+function digitsOnly(el){el.value=el.value.replace(/\D/g,'')}
+function decimalOnly(el){el.value=el.value.replace(/[^\d.]/g,'').replace(/(\..*)\./g,'$1')}
+// Allows +91 / 91 / a leading 0 / spaces / hyphens while typing -- stripped
+// by KisanValidation.normalizeMobile before validating or sending.
+function mobileChars(el){el.value=el.value.replace(/[^\d+\s-]/g,'')}
+function setErr(id,on){document.getElementById(id).classList.toggle('err',on);return !on}
+function otpHop(el,i){
+  el.value=el.value.replace(/\D/g,'');
+  const inputs=document.querySelectorAll('.otp-inputs input');
+  if(el.value && i<5) inputs[i+1].focus();
+}
+
+/* ---------- navigation ---------- */
+function go(n){
+  step=n;
+  document.querySelectorAll('[data-panel]').forEach(p=>p.classList.toggle('hide',+p.dataset.panel!==n));
+  document.querySelectorAll('.step').forEach(s=>{
+    const i=+s.dataset.step;
+    s.classList.toggle('done',i<n);
+    s.classList.toggle('active',i===n);
+  });
+  document.getElementById('prog').style.width=(n/4*84)+'%';
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+
+/* ---------- Step 1: OTP (real backend -- mocked SMS, real verification) ---------- */
+async function sendOrVerifyOtp(){
+  const m=document.getElementById('mobile');
+  const btn=document.getElementById('mobileBtn');
+  if(!otpStage){
+    if(KisanValidation.validateMobile(m.value)){setErr('mobile',true);return}
+    setErr('mobile',false);
+    btn.disabled=true;
+    const mobile=KisanValidation.normalizeMobile(m.value);
+    const { httpStatus, body } = await postJson('/api/auth/request-otp', { mobile, purpose:'registration' });
+    btn.disabled=false;
+    if(httpStatus===409){
+      document.getElementById('otpErr').textContent=t('e_mobileTaken');
+      document.getElementById('otpErr').style.display='block';
+      return;
+    }
+    if(httpStatus!==200){
+      document.getElementById('otpErr').textContent=body.message||t('e_otp');
+      document.getElementById('otpErr').style.display='block';
+      return;
+    }
+    document.getElementById('otpErr').style.display='none';
+    const sentEl=document.getElementById('otpSent');
+    sentEl.innerHTML = body.devCode
+      ? `<span>${t('otpMsgDev')}</span> <b>${body.devCode}</b>`
+      : `<span>${t('otpMsg')}</span>`;
+    sentEl.classList.add('show');
+    document.getElementById('otpBlock').classList.remove('hide');
+    btn.textContent=t('b_verifyOtp');
+    otpStage=true;
+    document.querySelector('.otp-inputs input').focus();
+  }else{
+    const code=[...document.querySelectorAll('.otp-inputs input')].map(i=>i.value).join('');
+    btn.disabled=true;
+    const mobile=KisanValidation.normalizeMobile(m.value);
+    const { httpStatus, body } = await postJson('/api/auth/verify-otp', { mobile, code, purpose:'registration' });
+    btn.disabled=false;
+    if(httpStatus!==200){
+      document.getElementById('otpErr').textContent=body.message||t('e_otp');
+      document.getElementById('otpErr').style.display='block';
+      return;
+    }
+    document.getElementById('otpErr').style.display='none';
+    go(1);
+  }
+}
+
+/* ---------- Step 3: live khasra lookup against real land_records ---------- */
+async function lookupKhasra(){
+  const number=document.getElementById('khasra').value.trim();
+  const box=document.getElementById('khasraMatch');
+  khasraMatch=null;
+  if(!number){ box.className='khasra-match hide'; return; }
+
+  let record=null;
+  try{
+    const res=await fetch('/api/land-records/lookup?number='+encodeURIComponent(number));
+    if(res.status===200) record=await res.json();
+  }catch(err){ /* offline -- fall through to "no match" messaging, never block the form */ }
+
+  const enteredName=(document.getElementById('name').value||'').trim().toLowerCase();
+  if(record){
+    khasraMatch=record;
+    const isTenantMatch = enteredName && record.farmerName.trim().toLowerCase()!==enteredName;
+    box.className='khasra-match '+(isTenantMatch?'tenant':'found');
+    box.textContent = isTenantMatch
+      ? t('khasraTenant',{name:record.farmerName})
+      : t('khasraFound',{name:record.farmerName, village:record.village, acres:record.extentAcres});
+    // Pre-fills the land-size field for confirmation -- the farmer/
+    // operator can still adjust it before continuing.
+    const landsizeEl=document.getElementById('landsize');
+    if(!landsizeEl.value) landsizeEl.value=record.extentAcres;
+  }else{
+    box.className='khasra-match missing';
+    box.textContent=t('khasraMissing');
+  }
+}
+
+/* ---------- validation per step ---------- */
+// Mirrors src/constants.js (YIELD_QUINTALS_PER_ACRE, OVER_DECLARE_CAP_MULTIPLIER)
+// -- this is a client-side sanity check only; the server derives its own
+// cap from the real land record, not from this claimed land size.
+const CLIENT_YIELD_QUINTALS_PER_ACRE = 24;
+const CLIENT_OVER_DECLARE_CAP_MULTIPLIER = 1.3;
+
+function nextFrom(s){
+  let ok=true;
+  if(s===1){
+    ok &= setErr('name',!!KisanValidation.validateName(document.getElementById('name').value));
+    ok &= setErr('aadhaar',!!KisanValidation.validateAadhaar(document.getElementById('aadhaar').value));
+    ok &= setErr('village',!!KisanValidation.validatePlaceName(document.getElementById('village').value,'Village'));
+    ok &= setErr('district',!!KisanValidation.validatePlaceName(document.getElementById('district').value,'District'));
+    ok &= setErr('crop',!document.getElementById('crop').value);
+    if(ok) go(2);
+  }
+  if(s===2){
+    ok &= setErr('khasra',!!KisanValidation.validateKhasra(document.getElementById('khasra').value));
+    const landRaw=document.getElementById('landsize').value;
+    const land=parseFloat(landRaw);
+    const { error: landErr } = KisanValidation.validateLandSize(landRaw);
+    ok &= setErr('landsize',!!landErr);
+    const landCap = land>0 ? Math.round(land*CLIENT_YIELD_QUINTALS_PER_ACRE*CLIENT_OVER_DECLARE_CAP_MULTIPLIER*100)/100 : null;
+    ok &= setErr('qty',!!KisanValidation.validateQuantity(document.getElementById('qty').value, landCap));
+    if(ok) go(3);
+  }
+  if(s===3){
+    const a=document.getElementById('acc').value, a2=document.getElementById('acc2').value;
+    ok &= setErr('acc',!!KisanValidation.validateBankAccount(a));
+    ok &= setErr('acc2',!a2 || a!==a2);
+    const ifsc=document.getElementById('ifsc');
+    const { error: ifscErr, value: ifscValue } = KisanValidation.validateIfsc(ifsc.value);
+    ifsc.value = ifscValue;
+    ok &= setErr('ifsc',!!ifscErr);
+    if(ok){ go(4); buildReview(); }
+  }
+}
+
+/* ---------- Review ---------- */
+function val(id){return document.getElementById(id).value}
+function buildReview(){
+  const rows=[
+    ['rv_name',val('name')],
+    ['rv_mobile',val('mobile')],
+    ['rv_aadhaar','XXXX-XXXX-'+val('aadhaar').slice(-4)],
+    ['rv_place',val('village')+' / '+val('district')],
+    ['rv_crop', T[lang]['opt_'+(val('crop')||'').toLowerCase()]||val('crop')],
+    ['rv_khasra',val('khasra')],
+    ['rv_land',val('landsize')+' ac'],
+    ['rv_qty',val('qty')+' q'],
+    ['rv_bank','••••'+val('acc').slice(-4)],
+    ['rv_ifsc',val('ifsc')]
+  ];
+  document.getElementById('reviewList').innerHTML=rows.map(r=>
+    `<div class="r"><span class="k">${t(r[0])}</span><span class="v">${r[1]||'—'}</span></div>`).join('');
+}
+
+/* ---------- Verify & register (real backend, three-state result) ---------- */
+async function runVerify(){
+  const rv=document.getElementById('resultView');
+  const btn=document.querySelector('#reviewView .btn-primary');
+  btn.disabled=true;
+  btn.textContent='…';
+
+  const { httpStatus, body } = await postJson('/api/farmers/register', {
+    name: val('name'),
+    mobile: KisanValidation.normalizeMobile(val('mobile')),
+    aadhaar: val('aadhaar'),
+    khasra: val('khasra'),
+    landSizeAcres: parseFloat(val('landsize')) || null,
+    crop: val('crop'),
+    bankAccountNumber: val('acc'),
+    bankIfsc: val('ifsc'),
+  });
+
+  btn.disabled=false;
+  btn.textContent=t('b_verify');
+
+  if(httpStatus!==201){
+    rv.innerHTML = `<div class="result"><div class="badge b-wait">!</div><h2>${t('err_register')}</h2><p>${body.message||(body.errors||[]).join(', ')||''}</p></div>`;
+    rv.classList.remove('hide');
+    document.getElementById('reviewView').classList.add('hide');
+    window.scrollTo({top:0,behavior:'smooth'});
+    return;
+  }
+
+  const verified = body.verified;
+  const landOk = !body.needsOfficerReview;
+
+  const badge = verified ? `<div class="badge b-ok">✓</div>` : `<div class="badge b-wait">⏳</div>`;
+  const statusLine = verified
+    ? `<span class="status-line s-ok">${t('ok_status')}</span>`
+    : `<span class="status-line s-wait">${t('wait_status')}</span>`;
+  const title = verified ? t('ok_title') : t('wait_title');
+  const msg = verified ? t('ok_msg') : t('wait_msg');
+
+  const check=(label,ok)=>`<div class="ci"><span class="m ${ok?'m-ok':'m-wait'}">${ok?'✓':'⏳'}</span>${label}</div>`;
+
+  rv.innerHTML=`
+    <div class="result">
+      ${badge}
+      <h2>${title}</h2>
+      <div>${statusLine}</div>
+      <div class="idcard">
+        <div class="lbl">${t('idlabel')}</div>
+        <div class="fid">${val('mobile')}</div>
+        <div class="who">${val('name')}</div>
+        <div class="meta">${val('village')}, ${val('district')} · ${T[lang]['opt_'+(val('crop')||'').toLowerCase()]||val('crop')}</div>
+      </div>
+      <div class="checklist">
+        ${check(t('ck_id'),true)}
+        ${check(t('ck_land'),landOk)}
+        ${check(t('ck_bank'),true)}
+      </div>
+      <p style="margin-top:14px">${msg}</p>
+      <div class="actions" style="justify-content:center">
+        <a class="btn btn-primary" style="text-decoration:none;display:inline-flex;align-items:center;justify-content:center" href="/login.html">${t('loginNow')}</a>
+        <button class="btn btn-ghost" onclick="resetAll()">${t('done')}</button>
+      </div>
+    </div>`;
+  document.getElementById('reviewView').classList.add('hide');
+  rv.classList.remove('hide');
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+
+function resetAll(){
+  document.querySelectorAll('input').forEach(i=>{i.value='';i.classList.remove('err')});
+  document.getElementById('crop').value='';
+  document.getElementById('otpSent').classList.remove('show');
+  document.getElementById('otpSent').innerHTML='';
+  document.getElementById('otpBlock').classList.add('hide');
+  document.getElementById('otpErr').style.display='none';
+  document.getElementById('mobileBtn').textContent=t('b_sendOtp');
+  otpStage=false;
+  khasraMatch=null;
+  document.getElementById('khasraMatch').className='khasra-match hide';
+  document.getElementById('reviewView').classList.remove('hide');
+  document.getElementById('resultView').classList.add('hide');
+  go(0);
+}
+
+/* init */
+applyLang();
+go(0);
+initSession();
+</script>
+</body>
+</html>

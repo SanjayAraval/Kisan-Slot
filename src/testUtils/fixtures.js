@@ -1,9 +1,28 @@
 'use strict';
 
 const crypto = require('crypto');
+const { hashPassword } = require('../authService');
 
 function uuid() {
   return crypto.randomUUID();
+}
+
+async function insertEmployee(pool, overrides = {}) {
+  const id = overrides.id || uuid();
+  await pool.query(
+    `INSERT INTO employees (id, employee_id, password_hash, name, role, centre_id, district)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+    [
+      id,
+      overrides.employeeId || `TEST-${id.slice(0, 8)}`,
+      hashPassword(overrides.password || 'test-password-123'),
+      overrides.name || 'Test Employee',
+      overrides.role || 'centre_officer',
+      overrides.centreId ?? null,
+      overrides.district ?? null,
+    ]
+  );
+  return id;
 }
 
 async function insertCentre(pool, overrides = {}) {
@@ -198,5 +217,6 @@ module.exports = {
   insertCentreDay,
   insertBooking,
   insertLotWeighment,
+  insertEmployee,
   DAILY_INPUT_BASELINE,
 };

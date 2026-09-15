@@ -33,6 +33,7 @@
   table.breakdown { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin-top: 0.75rem; }
   table.breakdown td, table.breakdown th { padding: 0.3rem 0.5rem; border-bottom: 1px solid var(--ink-10); text-align: left; }
   tr.binding { background: var(--gold-bg); font-weight: 600; }
+  .link-btn { background: none; border: none; color: var(--green); font-weight: 600; cursor: pointer; padding: 0; text-decoration: underline; }
 </style>
 </head>
 <body>
@@ -40,6 +41,7 @@
 
 <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+<script src="/validation.js"></script>
 <script>
 'use strict';
 const h = React.createElement;
@@ -65,6 +67,14 @@ const DEFAULT_INPUTS = {
   moistureTestsPerMeterPerDay: 100,
 };
 
+// Mirrors declarationRoutes.js's GUNNY_BAGS_MAX / HAMALI_GANG_MAX /
+// TRUCK_EVACUATION_MAX -- same plausible ceilings, checked here too so a
+// stray extra zero is caught at the field, not after a round trip to the
+// server.
+const GUNNY_BAGS_MAX = 200000;
+const HAMALI_GANG_MAX = 500;
+const TRUCK_EVACUATION_MAX = 2000;
+
 const CONSTRAINT_LABELS = {
   weighbridge: 'Weighing (weighbridge / platform)',
   hamali: 'Hamali labour gangs',
@@ -74,10 +84,25 @@ const CONSTRAINT_LABELS = {
   moistureTesting: 'Moisture testing',
 };
 
+// Formats using the browser's local calendar date -- never toISOString(),
+// which converts to UTC and silently shifts the date for any timezone
+// ahead of UTC (e.g. IST) during the hours after local midnight but
+// before UTC midnight.
+function formatLocalDate(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function today() {
+  return formatLocalDate(new Date());
+}
+
 function todayPlusOne() {
   const d = new Date();
   d.setDate(d.getDate() + 1);
-  return d.toISOString().slice(0, 10);
+  return formatLocalDate(d);
 }
 
 async function fetchJson(url, options) {
@@ -89,22 +114,24 @@ async function fetchJson(url, options) {
   return { status: res.status, body };
 }
 
-function Stepper({ label, value, onChange, step, hint }) {
+function Stepper({ label, value, onChange, step, hint, min = 1, max, error }) {
   return h('div', { className: 'field' },
     h('label', null, label + (hint ? ` (${hint})` : '')),
     h('div', { className: 'stepper' },
-      h('button', { type: 'button', onClick: () => onChange(Math.max(0, value - step)) }, '−'),
+      h('button', { type: 'button', onClick: () => onChange(Math.max(min, value - step)) }, '−'),
       h('input', {
         type: 'number',
         value: value,
-        min: 0,
+        min: min,
+        max: max,
         onChange: (e) => {
           const n = Number(e.target.value);
-          onChange(Number.isFinite(n) && n >= 0 ? n : 0);
+          onChange(Number.isFinite(n) ? n : min);
         },
       }),
-      h('button', { type: 'button', onClick: () => onChange(value + step) }, '+')
-    )
+      h('button', { type: 'button', onClick: () => onChange(max != null ? Math.min(max, value + step) : value + step) }, '+')
+    ),
+    error && h('div', { className: 'msg error', style: { marginTop: '0.4rem', marginBottom: 0, padding: '0.3rem 0.6rem' } }, error)
   );
 }
 
@@ -148,6 +175,7 @@ function ResultPanel({ result }) {
 }
 
 function App() {
+  const [session, setSession] = React.useState({ loading: true, role: null, centreId: null, name: null });
   const [centres, setCentres] = React.useState([]);
   const [centreId, setCentreId] = React.useState('');
   const [date, setDate] = React.useState(todayPlusOne());
@@ -158,14 +186,41 @@ function App() {
   const [error, setError] = React.useState(null);
   const [result, setResult] = React.useState(null);
 
+  // Only centre and district officers declare -- redirect anyone else
+  // (or anyone not logged in) to the shared login screen.
   React.useEffect(() => {
+    fetchJson('/api/auth/me')
+      .then(({ status, body }) => {
+        if (status !== 200 || (body.role !== 'centre_officer' && body.role !== 'district_officer')) {
+          window.location.href = '/login.html';
+          return;
+        }
+        setSession({ loading: false, role: body.role, centreId: body.centreId, name: body.name });
+      })
+      .catch(() => { window.location.href = '/login.html'; });
+  }, []);
+
+  React.useEffect(() => {
+    if (session.loading) return;
     fetchJson('/api/centres')
       .then(({ body }) => {
         setCentres(body);
-        if (body.length > 0) setCentreId(body[0].id);
+        // A centre officer is locked to their own assigned centre; a
+        // district officer keeps the full picker (the server still
+        // rejects a centre outside their district either way).
+        if (session.role === 'centre_officer' && session.centreId) {
+          setCentreId(session.centreId);
+        } else if (body.length > 0) {
+          setCentreId(body[0].id);
+        }
       })
       .catch((err) => setError(err.message));
-  }, []);
+  }, [session.loading]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function logout() {
+    await fetchJson('/api/auth/logout', { method: 'POST' }).catch(() => {});
+    window.location.href = '/login.html';
+  }
 
   async function loadDeclaration() {
     if (!centreId || !date) return;
@@ -206,13 +261,23 @@ function App() {
     }
   }
 
+  if (session.loading) {
+    return h('div', null, h('p', { className: 'sub' }, 'Checking your session…'));
+  }
+
+  const lockedCentre = session.role === 'centre_officer' ? centres.find((c) => c.id === centreId) : null;
+
   return h('div', null,
     h('h1', null, "Tonight's Declaration"),
     h('p', { className: 'sub' }, "Declare tomorrow's operating inputs and see the recomputed capacity."),
-    h('p', { style: { fontSize: '0.85rem', marginTop: '-0.75rem', marginBottom: '1rem' } },
+    h('p', { style: { fontSize: '0.85rem', marginTop: '-0.75rem', marginBottom: '0.4rem' } },
       h('a', { href: '/dashboard.html', style: { color: 'var(--green)' } }, 'District officer dashboard →'),
       ' · ',
       h('a', { href: '/farmer.html', style: { color: 'var(--green)' } }, 'Farmer screen →')
+    ),
+    h('p', { style: { fontSize: '0.8rem', color: 'var(--ink-60)', marginTop: 0, marginBottom: '1rem' } },
+      `Logged in as ${session.name} (${session.role.replace('_', ' ')})`, ' · ',
+      h('button', { className: 'link-btn', onClick: logout }, 'Log out')
     ),
 
     error && h('div', { className: 'msg error' }, error),
@@ -222,13 +287,15 @@ function App() {
       h('div', { className: 'row' },
         h('div', null,
           h('label', null, 'Centre'),
-          h('select', { value: centreId, onChange: (e) => setCentreId(e.target.value) },
-            centres.map((c) => h('option', { key: c.id, value: c.id }, `${c.name} (${c.code})`))
-          )
+          lockedCentre
+            ? h('div', { style: { padding: '0.4rem 0', fontWeight: 700 } }, `${lockedCentre.name} (${lockedCentre.code})`)
+            : h('select', { value: centreId, onChange: (e) => setCentreId(e.target.value) },
+                centres.map((c) => h('option', { key: c.id, value: c.id }, `${c.name} (${c.code})`))
+              )
         ),
         h('div', null,
           h('label', null, 'Date'),
-          h('input', { type: 'date', value: date, onChange: (e) => setDate(e.target.value) })
+          h('input', { type: 'date', value: date, min: today(), onChange: (e) => setDate(e.target.value) })
         )
       ),
       h('button', { className: 'btn btn-secondary', onClick: loadDeclaration, disabled: loading || !centreId || !date },
@@ -251,24 +318,34 @@ function App() {
         label: 'Gunny bags in stock',
         value: inputs.gunnyBagsAvailable,
         step: 50,
+        max: GUNNY_BAGS_MAX,
+        error: KisanValidation.validatePositiveIntegerInBounds(inputs.gunnyBagsAvailable, { max: GUNNY_BAGS_MAX, label: 'Gunny bags in stock' }),
         onChange: (v) => setInputs({ ...inputs, gunnyBagsAvailable: v }),
       }),
       h(Stepper, {
         label: 'Hamali gangs available',
         value: inputs.hamaliGangCount,
         step: 1,
+        max: HAMALI_GANG_MAX,
+        error: KisanValidation.validatePositiveIntegerInBounds(inputs.hamaliGangCount, { max: HAMALI_GANG_MAX, label: 'Hamali gangs available' }),
         onChange: (v) => setInputs({ ...inputs, hamaliGangCount: v }),
       }),
       h(Stepper, {
         label: 'Trucks for evacuation',
         value: inputs.truckEvacuationCapacity,
         step: 1,
+        max: TRUCK_EVACUATION_MAX,
+        error: KisanValidation.validatePositiveIntegerInBounds(inputs.truckEvacuationCapacity, { max: TRUCK_EVACUATION_MAX, label: 'Trucks for evacuation' }),
         onChange: (v) => setInputs({ ...inputs, truckEvacuationCapacity: v }),
       }),
       h('div', { className: 'actions' },
-        h('button', { className: 'btn btn-primary', onClick: submitDeclaration, disabled: submitting },
-          submitting ? 'Submitting…' : 'Submit declaration'
-        )
+        h('button', {
+          className: 'btn btn-primary', onClick: submitDeclaration,
+          disabled: submitting
+            || !!KisanValidation.validatePositiveIntegerInBounds(inputs.gunnyBagsAvailable, { max: GUNNY_BAGS_MAX })
+            || !!KisanValidation.validatePositiveIntegerInBounds(inputs.hamaliGangCount, { max: HAMALI_GANG_MAX })
+            || !!KisanValidation.validatePositiveIntegerInBounds(inputs.truckEvacuationCapacity, { max: TRUCK_EVACUATION_MAX }),
+        }, submitting ? 'Submitting…' : 'Submit declaration')
       )
     ),
 

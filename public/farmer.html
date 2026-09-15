@@ -4,83 +4,406 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
 <title>Kisan Slot — Farmer</title>
-<link rel="stylesheet" href="/theme.css" />
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        // Names namespaced under "kisan" so they never collide with
+        // Tailwind's own default green/red scales -- these five are the
+        // palette from theme.css (shared with declaration.html and
+        // dashboard.html) and the ONLY colours used here.
+        colors: {
+          kisan: {
+            ink: '#16241C',
+            paper: '#EDF0EC',
+            paperRaised: '#FFFFFF',
+            gold: '#B8891B',
+            green: '#2E7D4F',
+            red: '#A32B21',
+          },
+        },
+        fontFamily: {
+          sans: ['system-ui', '-apple-system', 'Segoe UI', 'Roboto', 'Noto Sans', 'sans-serif'],
+        },
+      },
+    },
+  };
+</script>
 <style>
-  body { max-width: 480px; margin: 0 auto; padding: 1rem 1rem 3rem; font-size: 17px; line-height: 1.45; }
-  h1 { font-size: 1.25rem; margin: 0.6rem 0 0.1rem; }
-  h2 { font-size: 1.05rem; margin: 0 0 0.6rem; }
-  .sub { color: var(--ink-60); margin: 0 0 1.1rem; font-size: 0.92rem; }
-  .nav { font-size: 0.85rem; margin-bottom: 0.6rem; }
-  .nav a { color: var(--green); }
-
-  label { display: block; font-size: 0.88rem; font-weight: 600; color: var(--ink); margin-bottom: 0.3rem; }
-  select, input[type="number"], input[type="date"], input[type="search"] {
-    width: 100%; font-size: 1rem; padding: 0.8rem 0.9rem; border: 1px solid var(--ink-16);
-    border-radius: var(--radius); background: var(--paper-raised); color: var(--ink); box-sizing: border-box;
-    min-height: 3rem;
-  }
-  .field { margin-bottom: 1rem; }
-
-  .btn { width: 100%; min-height: 3.1rem; font-size: 1.05rem; }
-  .btn-row { display: flex; gap: 0.6rem; }
-  .btn-row .btn { flex: 1; }
-
-  .card {
-    background: var(--paper-raised); border: 1px solid var(--ink-10); border-radius: var(--radius);
-    padding: 1rem 1.1rem; margin-bottom: 1rem;
-  }
-  .card .row { display: flex; justify-content: space-between; gap: 0.75rem; padding: 0.4rem 0; border-bottom: 1px solid var(--ink-06); }
-  .card .row:last-child { border-bottom: none; }
-  .card .row .k { color: var(--ink-60); font-size: 0.9rem; }
-  .card .row .v { font-weight: 700; text-align: right; }
-
-  .tabs { display: flex; gap: 0.4rem; margin-bottom: 1.1rem; }
-  .tab {
-    flex: 1; text-align: center; padding: 0.75rem 0.4rem; border-radius: var(--radius);
-    border: 1px solid var(--ink-16); background: var(--paper-raised); color: var(--ink);
-    font-size: 0.92rem; font-weight: 700; cursor: pointer; min-height: 3rem;
-  }
-  .tab.active { background: var(--ink); color: var(--paper); border-color: var(--ink); }
-  .tab:disabled { opacity: 0.4; cursor: default; }
-
-  .empty { color: var(--ink-60); font-size: 0.92rem; text-align: center; padding: 1.2rem 0.5rem; }
-  .loading { color: var(--ink-60); font-size: 0.92rem; padding: 0.5rem 0; }
-
-  .token-display { text-align: center; padding: 0.8rem 0; }
-  .token-display .t { font-size: 1.6rem; font-weight: 800; letter-spacing: 0.02em; }
-
-  .timeline { list-style: none; margin: 0; padding: 0; }
-  .timeline li { display: flex; gap: 0.75rem; padding: 0.65rem 0; border-bottom: 1px solid var(--ink-06); }
-  .timeline li:last-child { border-bottom: none; }
-  .dot { width: 1.5rem; height: 1.5rem; border-radius: 50%; flex: none; margin-top: 0.1rem; display: flex; align-items: center; justify-content: center; font-size: 0.85rem; font-weight: 800; }
-  .dot.done { background: var(--green); color: var(--paper-raised); }
-  .dot.pending { background: var(--ink-06); color: var(--ink-30); border: 1px solid var(--ink-16); }
-  .stage-label { font-weight: 700; }
-  .stage-at { font-size: 0.85rem; color: var(--ink-60); }
-  .stage-note { font-size: 0.82rem; color: var(--ink-30); }
-
-  .deduction-row { display: flex; justify-content: space-between; padding: 0.35rem 0; font-size: 0.92rem; }
-  .deduction-row .desc { color: var(--ink-60); font-size: 0.8rem; }
-  .net-payable { text-align: center; padding: 0.9rem 0 0.4rem; }
-  .net-payable .amount { font-size: 1.9rem; font-weight: 800; color: var(--green); }
-  .net-payable .rate { font-size: 0.85rem; color: var(--ink-60); margin-top: 0.2rem; }
-
-  .alt-card { border: 1px solid var(--ink-10); border-radius: var(--radius); padding: 0.8rem 0.9rem; margin-bottom: 0.6rem; background: var(--paper-raised); }
-  .alt-card .h { font-weight: 700; margin-bottom: 0.15rem; }
-  .alt-card .d { font-size: 0.85rem; color: var(--ink-60); margin-bottom: 0.5rem; }
-
-  .link-btn { background: none; border: none; color: var(--green); font-size: 0.9rem; font-weight: 600; cursor: pointer; padding: 0.4rem 0; text-decoration: underline; }
+  /* Things Tailwind's utility classes don't reach. */
+  html, body { background: #EDF0EC; }
+  .qr-box img, .qr-box canvas, .qr-box table { margin: 0 auto; }
+  input[type="date"]::-webkit-calendar-picker-indicator { cursor: pointer; }
 </style>
 </head>
-<body>
+<body class="font-sans text-kisan-ink">
 <div id="root"></div>
 
 <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="/validation.js"></script>
 <script>
 'use strict';
 const h = React.createElement;
-const { useState, useEffect, useMemo, useCallback } = React;
+const { useState, useEffect, useMemo, useCallback, useRef, useContext, createContext } = React;
+
+// ---------------------------------------------------------------------------
+// Translations -- a flat key -> string dictionary per language. Every
+// static label in this file, plus the small set of dynamic enums the
+// server returns (moisture verdict, timeline stage keys), is looked up
+// through t(key, vars). Free-text officer-entered content (J-Form
+// deduction type/description) is never translated -- it isn't drawn from
+// a fixed vocabulary, so there is nothing safe to translate it into.
+// ---------------------------------------------------------------------------
+
+const TRANSLATIONS = {
+  en: {
+    appTitle: 'Kisan Slot',
+    appSubtitle: 'Book your procurement slot and track your lot.',
+    navDeclaration: 'Officer declaration',
+    navDashboard: 'District dashboard',
+    languageLabel: 'Language',
+    searchLabel: 'Search your name or phone number',
+    searchPlaceholder: 'e.g. Ravi or 98765...',
+    pickLabel: 'Pick your name (demo login)',
+    loadingEllipsis: 'Loading…',
+    selectShown: 'Select — {n} shown',
+    needsReviewBadge: 'Needs officer review',
+    tenantReviewMsg: "{name}'s registration is linked to another person's land record (tenant cultivation).",
+    noRecordReviewMsg: 'We could not find a matching land record for {name}.',
+    reviewNote: 'This is not a rejection. An officer will call back to confirm your details before you can book online. You can still visit the centre in person in the meantime.',
+    fieldName: 'Name',
+    fieldPhone: 'Phone',
+    fieldVillage: 'Village',
+    fieldLand: 'Land',
+    fieldPermitted: 'Permitted this season',
+    fieldBank: 'Bank account',
+    tabBook: 'Book',
+    tabStatus: 'Status',
+    tabJForm: 'J-Form',
+    fieldQuantity: 'Quantity (quintals)',
+    quantityPlaceholder: 'e.g. 40',
+    fieldCentre: 'Centre',
+    fieldDate: 'Date',
+    bookButton: 'Book slot',
+    bookingEllipsis: 'Booking…',
+    enterAllFields: 'Enter a quantity, centre, and date.',
+    bookedBadge: 'Booked',
+    rowQuantity: 'Quantity',
+    rowDate: 'Date',
+    rowSlotsLeft: 'Slots left after this',
+    bringTokenNote: 'Bring this token when you arrive at the gate.',
+    seeStatusBtn: 'See status',
+    bookAnotherBtn: 'Book another',
+    landEstimateNote: 'Land-record estimate: {est} q. You declared: {req} q.',
+    reviewNoteShort: 'This is not a rejection -- an officer will call to confirm before this booking is placed.',
+    tryDifferentQtyBtn: 'Try a different quantity',
+    dontLoadTitle: "Don't load your trolley yet",
+    noCapacityNote: "This slot is full for that centre and date. It's not a rejection -- here's where there's room instead.",
+    sameCentreTitle: 'Same centre, {date}',
+    slotsOpen: '{n} slots open',
+    slotsOpenToday: '{n} slots open today',
+    kmAway: '{name} ({km} km away)',
+    bookThisInsteadBtn: 'Book this instead',
+    noAlternativesNote: 'No alternatives found nearby -- please try again tomorrow or contact your centre.',
+    backBtn: 'Back',
+    somethingWrong: 'Something went wrong.',
+    tryAgainBtn: 'Try again',
+    weatherWarningTitle: 'Rain expected',
+    weatherWarningBody: '{pct}% chance of rain around your slot date. Wet paddy above 17% moisture may be rejected at the gate -- consider a later, drier slot.',
+    ticketTitle: 'Your gate pass',
+    ticketFarmer: 'Farmer',
+    ticketToken: 'Token',
+    ticketScanNote: 'Show this QR code at the gate.',
+    loadingStatus: 'Loading status…',
+    noBookingsYet: 'No bookings yet.',
+    bookSlotBtn: 'Book a slot',
+    rowToken: 'Token',
+    rowCentre: 'Centre',
+    sectionProgress: 'Progress',
+    sectionMoisture: 'Moisture',
+    awaitingMoisture: 'Awaiting moisture test at the gate.',
+    moistureTestLabel: 'Moisture test',
+    rowReading: 'Reading',
+    readingValue: '{value}% (limit {limit}%)',
+    rowMeter: 'Meter',
+    rowCalibrated: 'Calibrated',
+    verdictAccept: 'Accepted',
+    verdictCut: 'Accepted with cut',
+    verdictReject: 'Rejected',
+    stageGateEntry: 'Gate entry',
+    stageMoistureTest: 'Moisture test',
+    stageWeighment: 'Weighment',
+    stageAcknowledgement: 'Acknowledgement',
+    stageBillRaised: 'Bill raised',
+    stagePayment: 'Payment',
+    stagePendingNote: 'Pending',
+    stagePaymentPendingNote: 'Released after the bill is finalised',
+    loadingBill: 'Loading bill…',
+    noBillYet: 'No bill raised yet -- this appears once your lot is weighed and finalised.',
+    checkStatusBtn: 'Check status',
+    rowJForm: 'J-Form',
+    rowIssued: 'Issued',
+    rowNetWeight: 'Net weight',
+    rowMspRate: 'MSP rate',
+    rowGrossValue: 'Gross value',
+    sectionDeductions: 'Deductions',
+    noDeductions: 'No deductions.',
+    totalDeductions: 'Total deductions',
+    netPayableLabel: 'Net payable · {rate}/q effective (MSP {msp}/q)',
+    couldNotLoadFarmer: 'Could not load farmer.',
+    loadingYourDetails: 'Loading your details…',
+    couldNotLoadStatus: 'Could not load status.',
+    couldNotLoadBill: 'Could not load the bill.',
+    checkingSession: 'Checking your session…',
+    logoutBtn: 'Log out',
+  },
+  hi: {
+    appTitle: 'किसान स्लॉट',
+    appSubtitle: 'अपनी खरीद स्लॉट बुक करें और अपने लॉट को ट्रैक करें।',
+    navDeclaration: 'अधिकारी घोषणा',
+    navDashboard: 'जिला डैशबोर्ड',
+    languageLabel: 'भाषा',
+    searchLabel: 'अपना नाम या फोन नंबर खोजें',
+    searchPlaceholder: 'जैसे रवि या 98765...',
+    pickLabel: 'अपना नाम चुनें (डेमो लॉगिन)',
+    loadingEllipsis: 'लोड हो रहा है…',
+    selectShown: 'चुनें — {n} दिखाए गए',
+    needsReviewBadge: 'अधिकारी समीक्षा आवश्यक',
+    tenantReviewMsg: '{name} का पंजीकरण किसी और के भूमि रिकॉर्ड से जुड़ा है (बटाईदार खेती)।',
+    noRecordReviewMsg: '{name} के लिए मिलता-जुलता भूमि रिकॉर्ड नहीं मिला।',
+    reviewNote: 'यह अस्वीकृति नहीं है। ऑनलाइन बुकिंग से पहले एक अधिकारी आपकी जानकारी की पुष्टि के लिए कॉल करेगा। इस बीच आप केंद्र पर व्यक्तिगत रूप से जा सकते हैं।',
+    fieldName: 'नाम',
+    fieldPhone: 'फोन',
+    fieldVillage: 'गाँव',
+    fieldLand: 'भूमि',
+    fieldPermitted: 'इस सीजन अनुमत',
+    fieldBank: 'बैंक खाता',
+    tabBook: 'बुक करें',
+    tabStatus: 'स्थिति',
+    tabJForm: 'जे-फॉर्म',
+    fieldQuantity: 'मात्रा (क्विंटल)',
+    quantityPlaceholder: 'जैसे 40',
+    fieldCentre: 'केंद्र',
+    fieldDate: 'तारीख',
+    bookButton: 'स्लॉट बुक करें',
+    bookingEllipsis: 'बुक हो रहा है…',
+    enterAllFields: 'मात्रा, केंद्र और तारीख दर्ज करें।',
+    bookedBadge: 'बुक हो गया',
+    rowQuantity: 'मात्रा',
+    rowDate: 'तारीख',
+    rowSlotsLeft: 'इसके बाद बचे स्लॉट',
+    bringTokenNote: 'गेट पर पहुँचने पर यह टोकन साथ लाएँ।',
+    seeStatusBtn: 'स्थिति देखें',
+    bookAnotherBtn: 'एक और बुक करें',
+    landEstimateNote: 'भूमि-रिकॉर्ड अनुमान: {est} क्विंटल। आपने घोषित किया: {req} क्विंटल।',
+    reviewNoteShort: 'यह अस्वीकृति नहीं है -- यह बुकिंग होने से पहले एक अधिकारी पुष्टि के लिए कॉल करेगा।',
+    tryDifferentQtyBtn: 'अलग मात्रा आज़माएँ',
+    dontLoadTitle: 'अभी अपनी ट्रॉली न भरें',
+    noCapacityNote: 'उस केंद्र और तारीख के लिए स्लॉट भर चुका है। यह अस्वीकृति नहीं है -- यहाँ जगह उपलब्ध है।',
+    sameCentreTitle: 'वही केंद्र, {date}',
+    slotsOpen: '{n} स्लॉट खाली',
+    slotsOpenToday: 'आज {n} स्लॉट खाली',
+    kmAway: '{name} ({km} किमी दूर)',
+    bookThisInsteadBtn: 'इसके बजाय यह बुक करें',
+    noAlternativesNote: 'आस-पास कोई विकल्प नहीं मिला -- कृपया कल फिर कोशिश करें या अपने केंद्र से संपर्क करें।',
+    backBtn: 'वापस',
+    somethingWrong: 'कुछ गलत हो गया।',
+    tryAgainBtn: 'फिर कोशिश करें',
+    weatherWarningTitle: 'बारिश की संभावना',
+    weatherWarningBody: 'आपकी स्लॉट तारीख पर बारिश की {pct}% संभावना है। 17% नमी से अधिक गीला धान गेट पर अस्वीकार हो सकता है -- बाद की, सूखी तारीख का स्लॉट चुनने पर विचार करें।',
+    ticketTitle: 'आपका गेट पास',
+    ticketFarmer: 'किसान',
+    ticketToken: 'टोकन',
+    ticketScanNote: 'गेट पर यह क्यूआर कोड दिखाएँ।',
+    loadingStatus: 'स्थिति लोड हो रही है…',
+    noBookingsYet: 'अभी तक कोई बुकिंग नहीं।',
+    bookSlotBtn: 'स्लॉट बुक करें',
+    rowToken: 'टोकन',
+    rowCentre: 'केंद्र',
+    sectionProgress: 'प्रगति',
+    sectionMoisture: 'नमी',
+    awaitingMoisture: 'गेट पर नमी परीक्षण की प्रतीक्षा है।',
+    moistureTestLabel: 'नमी परीक्षण',
+    rowReading: 'रीडिंग',
+    readingValue: '{value}% (सीमा {limit}%)',
+    rowMeter: 'मीटर',
+    rowCalibrated: 'कैलिब्रेट किया गया',
+    verdictAccept: 'स्वीकृत',
+    verdictCut: 'कटौती के साथ स्वीकृत',
+    verdictReject: 'अस्वीकृत',
+    stageGateEntry: 'गेट प्रवेश',
+    stageMoistureTest: 'नमी परीक्षण',
+    stageWeighment: 'तौल',
+    stageAcknowledgement: 'पावती',
+    stageBillRaised: 'बिल जारी',
+    stagePayment: 'भुगतान',
+    stagePendingNote: 'लंबित',
+    stagePaymentPendingNote: 'बिल अंतिम होने के बाद जारी',
+    loadingBill: 'बिल लोड हो रहा है…',
+    noBillYet: 'अभी तक कोई बिल जारी नहीं हुआ -- यह आपके लॉट के तौले और अंतिम होने पर दिखेगा।',
+    checkStatusBtn: 'स्थिति जाँचें',
+    rowJForm: 'जे-फॉर्म',
+    rowIssued: 'जारी किया गया',
+    rowNetWeight: 'शुद्ध वजन',
+    rowMspRate: 'एमएसपी दर',
+    rowGrossValue: 'सकल मूल्य',
+    sectionDeductions: 'कटौतियाँ',
+    noDeductions: 'कोई कटौती नहीं।',
+    totalDeductions: 'कुल कटौती',
+    netPayableLabel: 'निवल देय · {rate}/क्विंटल प्रभावी (एमएसपी {msp}/क्विंटल)',
+    couldNotLoadFarmer: 'किसान लोड नहीं हो सका।',
+    loadingYourDetails: 'आपकी जानकारी लोड हो रही है…',
+    couldNotLoadStatus: 'स्थिति लोड नहीं हो सकी।',
+    couldNotLoadBill: 'बिल लोड नहीं हो सका।',
+    checkingSession: 'आपका सत्र जाँचा जा रहा है…',
+    logoutBtn: 'लॉग आउट',
+  },
+  te: {
+    appTitle: 'కిసాన్ స్లాట్',
+    appSubtitle: 'మీ సేకరణ స్లాట్‌ను బుక్ చేయండి మరియు మీ లాట్‌ను ట్రాక్ చేయండి.',
+    navDeclaration: 'అధికారి ప్రకటన',
+    navDashboard: 'జిల్లా డాష్‌బోర్డ్',
+    languageLabel: 'భాష',
+    searchLabel: 'మీ పేరు లేదా ఫోన్ నంబర్ వెతకండి',
+    searchPlaceholder: 'ఉదా. రవి లేదా 98765...',
+    pickLabel: 'మీ పేరు ఎంచుకోండి (డెమో లాగిన్)',
+    loadingEllipsis: 'లోడ్ అవుతోంది…',
+    selectShown: 'ఎంచుకోండి — {n} చూపబడ్డాయి',
+    needsReviewBadge: 'అధికారి సమీక్ష అవసరం',
+    tenantReviewMsg: '{name} నమోదు వేరొకరి భూమి రికార్డుతో ముడిపడి ఉంది (కౌలు సాగు).',
+    noRecordReviewMsg: '{name} కోసం సరిపోలే భూమి రికార్డు కనుగొనబడలేదు.',
+    reviewNote: 'ఇది తిరస్కరణ కాదు. ఆన్‌లైన్‌లో బుక్ చేసుకునే ముందు మీ వివరాలను నిర్ధారించడానికి అధికారి కాల్ చేస్తారు. అంతలోగా మీరు నేరుగా కేంద్రాన్ని సందర్శించవచ్చు.',
+    fieldName: 'పేరు',
+    fieldPhone: 'ఫోన్',
+    fieldVillage: 'గ్రామం',
+    fieldLand: 'భూమి',
+    fieldPermitted: 'ఈ సీజన్‌లో అనుమతించబడింది',
+    fieldBank: 'బ్యాంక్ ఖాతా',
+    tabBook: 'బుక్ చేయండి',
+    tabStatus: 'స్థితి',
+    tabJForm: 'జే-ఫారం',
+    fieldQuantity: 'పరిమాణం (క్వింటాళ్లు)',
+    quantityPlaceholder: 'ఉదా. 40',
+    fieldCentre: 'కేంద్రం',
+    fieldDate: 'తేదీ',
+    bookButton: 'స్లాట్ బుక్ చేయండి',
+    bookingEllipsis: 'బుక్ అవుతోంది…',
+    enterAllFields: 'పరిమాణం, కేంద్రం మరియు తేదీని నమోదు చేయండి.',
+    bookedBadge: 'బుక్ అయింది',
+    rowQuantity: 'పరిమాణం',
+    rowDate: 'తేదీ',
+    rowSlotsLeft: 'దీని తర్వాత మిగిలిన స్లాట్లు',
+    bringTokenNote: 'గేటు వద్దకు వచ్చినప్పుడు ఈ టోకెన్ తీసుకురండి.',
+    seeStatusBtn: 'స్థితి చూడండి',
+    bookAnotherBtn: 'మరొకటి బుక్ చేయండి',
+    landEstimateNote: 'భూమి-రికార్డు అంచనా: {est} క్వి. మీరు ప్రకటించింది: {req} క్వి.',
+    reviewNoteShort: 'ఇది తిరస్కరణ కాదు -- ఈ బుకింగ్ నమోదు కావడానికి ముందు అధికారి నిర్ధారణకు కాల్ చేస్తారు.',
+    tryDifferentQtyBtn: 'వేరే పరిమాణం ప్రయత్నించండి',
+    dontLoadTitle: 'ఇంకా మీ బండిని లోడ్ చేయవద్దు',
+    noCapacityNote: 'ఆ కేంద్రం మరియు తేదీకి స్లాట్ నిండిపోయింది. ఇది తిరస్కరణ కాదు -- ఇక్కడ స్థలం ఉంది.',
+    sameCentreTitle: 'అదే కేంద్రం, {date}',
+    slotsOpen: '{n} స్లాట్లు ఖాళీగా ఉన్నాయి',
+    slotsOpenToday: 'ఈరోజు {n} స్లాట్లు ఖాళీగా ఉన్నాయి',
+    kmAway: '{name} ({km} కి.మీ దూరం)',
+    bookThisInsteadBtn: 'బదులుగా దీన్ని బుక్ చేయండి',
+    noAlternativesNote: 'సమీపంలో ప్రత్యామ్నాయాలు కనుగొనబడలేదు -- దయచేసి రేపు మళ్లీ ప్రయత్నించండి లేదా మీ కేంద్రాన్ని సంప్రదించండి.',
+    backBtn: 'వెనుకకు',
+    somethingWrong: 'ఏదో తప్పు జరిగింది.',
+    tryAgainBtn: 'మళ్లీ ప్రయత్నించండి',
+    weatherWarningTitle: 'వర్షం అవకాశం',
+    weatherWarningBody: 'మీ స్లాట్ తేదీన వర్షం పడే అవకాశం {pct}%. 17% తేమ మించిన తడి ధాన్యం గేటు వద్ద తిరస్కరించబడవచ్చు -- తర్వాతి, పొడి తేదీ స్లాట్‌ను పరిశీలించండి.',
+    ticketTitle: 'మీ గేట్ పాస్',
+    ticketFarmer: 'రైతు',
+    ticketToken: 'టోకెన్',
+    ticketScanNote: 'గేటు వద్ద ఈ క్యూఆర్ కోడ్‌ను చూపించండి.',
+    loadingStatus: 'స్థితి లోడ్ అవుతోంది…',
+    noBookingsYet: 'ఇంకా బుకింగ్‌లు లేవు.',
+    bookSlotBtn: 'స్లాట్ బుక్ చేయండి',
+    rowToken: 'టోకెన్',
+    rowCentre: 'కేంద్రం',
+    sectionProgress: 'పురోగతి',
+    sectionMoisture: 'తేమ',
+    awaitingMoisture: 'గేటు వద్ద తేమ పరీక్ష కోసం వేచి ఉంది.',
+    moistureTestLabel: 'తేమ పరీక్ష',
+    rowReading: 'రీడింగ్',
+    readingValue: '{value}% (పరిమితి {limit}%)',
+    rowMeter: 'మీటర్',
+    rowCalibrated: 'క్రమాంకనం చేయబడింది',
+    verdictAccept: 'ఆమోదించబడింది',
+    verdictCut: 'కోతతో ఆమోదించబడింది',
+    verdictReject: 'తిరస్కరించబడింది',
+    stageGateEntry: 'గేటు ప్రవేశం',
+    stageMoistureTest: 'తేమ పరీక్ష',
+    stageWeighment: 'తూకం',
+    stageAcknowledgement: 'అంగీకారం',
+    stageBillRaised: 'బిల్లు జారీ',
+    stagePayment: 'చెల్లింపు',
+    stagePendingNote: 'పెండింగ్‌లో ఉంది',
+    stagePaymentPendingNote: 'బిల్లు ఖరారైన తర్వాత విడుదల చేయబడుతుంది',
+    loadingBill: 'బిల్లు లోడ్ అవుతోంది…',
+    noBillYet: 'ఇంకా బిల్లు జారీ కాలేదు -- మీ లాట్ తూకం వేసి ఖరారైన తర్వాత ఇది కనిపిస్తుంది.',
+    checkStatusBtn: 'స్థితి తనిఖీ చేయండి',
+    rowJForm: 'జే-ఫారం',
+    rowIssued: 'జారీ చేయబడింది',
+    rowNetWeight: 'నికర బరువు',
+    rowMspRate: 'ఎంఎస్‌పి రేటు',
+    rowGrossValue: 'స్థూల విలువ',
+    sectionDeductions: 'కోతలు',
+    noDeductions: 'కోతలు లేవు.',
+    totalDeductions: 'మొత్తం కోతలు',
+    netPayableLabel: 'నికర చెల్లింపు · {rate}/క్వి ప్రభావవంతమైనది (ఎంఎస్‌పి {msp}/క్వి)',
+    couldNotLoadFarmer: 'రైతును లోడ్ చేయలేకపోయాము.',
+    loadingYourDetails: 'మీ వివరాలు లోడ్ అవుతున్నాయి…',
+    couldNotLoadStatus: 'స్థితిని లోడ్ చేయలేకపోయాము.',
+    couldNotLoadBill: 'బిల్లును లోడ్ చేయలేకపోయాము.',
+    checkingSession: 'మీ సెషన్ తనిఖీ అవుతోంది…',
+    logoutBtn: 'లాగ్ అవుట్',
+  },
+};
+
+function interpolate(str, vars) {
+  if (!vars) return str;
+  return Object.keys(vars).reduce((acc, k) => acc.split(`{${k}}`).join(vars[k]), str);
+}
+
+function translate(lang, key, vars) {
+  const dict = TRANSLATIONS[lang] || TRANSLATIONS.en;
+  const raw = dict[key] !== undefined ? dict[key] : (TRANSLATIONS.en[key] !== undefined ? TRANSLATIONS.en[key] : key);
+  return interpolate(raw, vars);
+}
+
+const LangContext = createContext('en');
+
+function useT() {
+  const lang = useContext(LangContext);
+  return useMemo(() => (key, vars) => translate(lang, key, vars), [lang]);
+}
+
+// Persisted via the URL's ?lang= query param rather than any client-side
+// storage -- a reload of the same link keeps the chosen language without
+// writing anything to the browser on the farmer's behalf.
+function getInitialLang() {
+  try {
+    const lang = new URLSearchParams(window.location.search).get('lang');
+    return TRANSLATIONS[lang] ? lang : 'en';
+  } catch (err) {
+    return 'en';
+  }
+}
+
+function persistLang(lang) {
+  try {
+    const url = new URL(window.location.href);
+    url.searchParams.set('lang', lang);
+    window.history.replaceState({}, '', url);
+  } catch (err) {
+    // Non-fatal -- the selector still works for the rest of this visit.
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -95,10 +418,31 @@ async function fetchJson(url, options) {
   return { httpStatus: res.status, body };
 }
 
+// Formats using the browser's local calendar date -- never toISOString(),
+// which converts to UTC and silently shifts the date for any timezone
+// ahead of UTC (e.g. IST) during the hours after local midnight but
+// before UTC midnight.
+function formatLocalDate(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function today() {
+  return formatLocalDate(new Date());
+}
+
 function todayPlusOne() {
   const d = new Date();
   d.setDate(d.getDate() + 1);
-  return d.toISOString().slice(0, 10);
+  return formatLocalDate(d);
+}
+
+function maxBookingDate() {
+  const d = new Date();
+  d.setDate(d.getDate() + KisanValidation.BOOKING_MAX_DAYS_AHEAD);
+  return formatLocalDate(d);
 }
 
 function formatINR(value) {
@@ -118,73 +462,217 @@ function formatDateTime(value) {
   return d.toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
 }
 
-const VERDICT_BADGE = { accept: 'badge-success', cut: 'badge-warning', reject: 'badge-danger' };
-const VERDICT_LABEL = { accept: 'Accepted', cut: 'Accepted with cut', reject: 'Rejected' };
+const VERDICT_KEY = { accept: 'verdictAccept', cut: 'verdictCut', reject: 'verdictReject' };
+const STAGE_ICON = {
+  gate_entry: 'fa-door-open',
+  moisture_test: 'fa-droplet',
+  weighment: 'fa-weight-scale',
+  acknowledgement: 'fa-signature',
+  bill_raised: 'fa-file-invoice-dollar',
+  payment: 'fa-money-bill-wave',
+};
+const STAGE_LABEL_KEY = {
+  gate_entry: 'stageGateEntry',
+  moisture_test: 'stageMoistureTest',
+  weighment: 'stageWeighment',
+  acknowledgement: 'stageAcknowledgement',
+  bill_raised: 'stageBillRaised',
+  payment: 'stagePayment',
+};
+
+// ---------------------------------------------------------------------------
+// Small shared UI pieces
+// ---------------------------------------------------------------------------
+
+function Card({ children, className }) {
+  return h('div', { className: `bg-kisan-paperRaised border border-kisan-ink/10 rounded-2xl p-4 shadow-sm ${className || ''}` }, children);
+}
+
+function SectionHeading({ icon, children }) {
+  return h('h2', { className: 'flex items-center gap-2 text-base font-extrabold text-kisan-ink mt-5 mb-2' },
+    h('i', { className: `fa-solid ${icon} text-kisan-gold text-sm` }),
+    children
+  );
+}
+
+function Row({ k, v }) {
+  return h('div', { className: 'flex items-center justify-between gap-3 py-2 border-b border-kisan-ink/[0.06] last:border-b-0' },
+    h('span', { className: 'text-sm text-kisan-ink/60' }, k),
+    h('span', { className: 'font-bold text-right' }, v)
+  );
+}
+
+function Badge({ tone, children }) {
+  const toneClass = {
+    success: 'bg-kisan-green/10 text-kisan-green border-kisan-green/40',
+    warning: 'bg-kisan-gold/10 text-kisan-gold border-kisan-gold/50',
+    danger: 'bg-kisan-red/10 text-kisan-red border-kisan-red/40',
+    neutral: 'bg-kisan-ink/5 text-kisan-ink/60 border-kisan-ink/10',
+  }[tone] || 'bg-kisan-ink/5 text-kisan-ink/60 border-kisan-ink/10';
+  return h('span', { className: `inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold border ${toneClass}` }, children);
+}
+
+function Callout({ tone, icon, children }) {
+  const toneClass = {
+    success: 'bg-kisan-green/10 border-kisan-green/40',
+    warning: 'bg-kisan-gold/10 border-kisan-gold/50',
+    danger: 'bg-kisan-red/10 border-kisan-red/40',
+  }[tone] || 'bg-kisan-ink/5 border-kisan-ink/10';
+  return h('div', { className: `rounded-2xl border p-4 flex items-start gap-2.5 ${toneClass}` },
+    icon && h('i', { className: `fa-solid ${icon} mt-1 flex-none` }),
+    h('div', { className: 'min-w-0 flex-1' }, children)
+  );
+}
+
+function PrimaryButton({ children, onClick, disabled, icon }) {
+  return h('button', {
+    type: 'button', onClick, disabled,
+    className: 'w-full min-h-[3.25rem] flex items-center justify-center gap-2 rounded-2xl bg-kisan-green text-white text-base font-extrabold shadow-md active:scale-[0.99] transition disabled:opacity-50 disabled:cursor-default',
+  },
+    icon && h('i', { className: `fa-solid ${icon}` }),
+    children
+  );
+}
+
+function SecondaryButton({ children, onClick, disabled }) {
+  return h('button', {
+    type: 'button', onClick, disabled,
+    className: 'w-full min-h-[3.25rem] rounded-2xl bg-kisan-paperRaised text-kisan-ink text-base font-bold border-2 border-kisan-ink/15 active:scale-[0.99] transition disabled:opacity-50',
+  }, children);
+}
+
+function FieldLabel({ icon, children }) {
+  return h('label', { className: 'flex items-center gap-2 text-sm font-bold text-kisan-ink mb-1.5' },
+    icon && h('i', { className: `fa-solid ${icon} text-kisan-ink/50 text-xs` }),
+    children
+  );
+}
+
+const inputClass = 'w-full min-h-[3.25rem] text-base px-4 rounded-2xl border-2 border-kisan-ink/15 bg-kisan-paperRaised text-kisan-ink focus:outline-none focus:border-kisan-green';
+
+// ---------------------------------------------------------------------------
+// Language selector
+// ---------------------------------------------------------------------------
+
+function LanguageSelector({ lang, onChange }) {
+  return h('select', {
+    value: lang,
+    onChange: (e) => onChange(e.target.value),
+    'aria-label': 'Language',
+    className: 'min-h-[2.75rem] rounded-xl bg-white/95 text-kisan-ink text-sm font-bold px-3 border-2 border-white/40 focus:outline-none',
+  },
+    h('option', { value: 'en' }, 'English'),
+    h('option', { value: 'hi' }, 'हिन्दी'),
+    h('option', { value: 'te' }, 'తెలుగు')
+  );
+}
 
 // ---------------------------------------------------------------------------
 // IDENTIFY
 // ---------------------------------------------------------------------------
 
-function FarmerPicker({ farmers, farmerId, onPick }) {
-  const [query, setQuery] = useState('');
-
-  const options = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    const matches = q
-      ? farmers.filter((f) => f.name.toLowerCase().includes(q) || (f.phone || '').includes(q))
-      : farmers;
-    return matches.slice(0, 50);
-  }, [farmers, query]);
-
-  return h('div', null,
-    h('div', { className: 'field' },
-      h('label', null, 'Search your name or phone number'),
-      h('input', {
-        type: 'search', value: query, placeholder: 'e.g. Ravi or 98765...',
-        onChange: (e) => setQuery(e.target.value),
-      })
-    ),
-    h('div', { className: 'field' },
-      h('label', null, 'Pick your name (demo login)'),
-      h('select', { value: farmerId, onChange: (e) => onPick(e.target.value) },
-        h('option', { value: '' }, farmers.length === 0 ? 'Loading…' : `Select — ${options.length} shown`),
-        options.map((f) => h('option', { key: f.id, value: f.id }, `${f.name} — ${f.phone}`))
-      )
-    )
-  );
-}
-
 function OfficerReviewCard({ farmer }) {
-  return h('div', { className: 'callout callout-warning' },
-    h('div', { className: 'badge badge-warning', style: { marginBottom: '0.6rem' } }, 'Needs officer review'),
-    h('p', { style: { margin: '0 0 0.5rem', fontWeight: 700 } },
-      farmer.hasLandRecord
-        ? `${farmer.name}'s registration is linked to another person's land record (tenant cultivation).`
-        : `We could not find a matching land record for ${farmer.name}.`
+  const t = useT();
+  return h(Callout, { tone: 'warning', icon: 'fa-user-clock' },
+    h('div', { className: 'inline-block mb-2' }, h(Badge, { tone: 'warning' }, t('needsReviewBadge'))),
+    h('p', { className: 'font-bold mb-1' },
+      farmer.hasLandRecord ? t('tenantReviewMsg', { name: farmer.name }) : t('noRecordReviewMsg', { name: farmer.name })
     ),
-    h('p', { style: { margin: 0, color: 'var(--ink-60)', fontSize: '0.92rem' } },
-      'This is not a rejection. An officer will call back to confirm your details before you can book online. ' +
-      'You can still visit the centre in person in the meantime.'
-    )
+    h('p', { className: 'text-sm text-kisan-ink/60 m-0' }, t('reviewNote'))
   );
 }
 
 function FarmerProfileCard({ farmer }) {
-  return h('div', { className: 'card' },
-    h('div', { className: 'row' }, h('span', { className: 'k' }, 'Name'), h('span', { className: 'v' }, farmer.name)),
-    h('div', { className: 'row' }, h('span', { className: 'k' }, 'Phone'), h('span', { className: 'v' }, farmer.phone)),
-    h('div', { className: 'row' }, h('span', { className: 'k' }, 'Village'), h('span', { className: 'v' }, farmer.village || '—')),
-    h('div', { className: 'row' },
-      h('span', { className: 'k' }, 'Land'),
-      h('span', { className: 'v' }, `${farmer.extentAcres} ac · Sy. ${farmer.surveyNumber}`)
+  const t = useT();
+  return h(Card, null,
+    h(Row, { k: t('fieldName'), v: farmer.name }),
+    h(Row, { k: t('fieldPhone'), v: farmer.phone }),
+    h(Row, { k: t('fieldVillage'), v: farmer.village || '—' }),
+    h(Row, { k: t('fieldLand'), v: `${farmer.extentAcres} ac · Sy. ${farmer.surveyNumber}` }),
+    h(Row, { k: t('fieldPermitted'), v: `${farmer.permittedQuantityQuintals} q` }),
+    h(Row, { k: t('fieldBank'), v: farmer.bankAccountLast4 ? `•••• ${farmer.bankAccountLast4}` : '—' })
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Weather advisory (Open-Meteo, no key) -- advisory only, never blocks
+// booking, and fails silently if unreachable or the date is outside the
+// forecast horizon.
+// ---------------------------------------------------------------------------
+
+function useRainForecast(centre, date) {
+  const [probability, setProbability] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setProbability(null);
+    if (!centre || !date || centre.latitude == null || centre.longitude == null) return undefined;
+
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${centre.latitude}&longitude=${centre.longitude}` +
+      `&daily=precipitation_probability_max&timezone=Asia%2FKolkata&start_date=${date}&end_date=${date}`;
+
+    fetch(url)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (cancelled || !data || !data.daily) return;
+        const values = data.daily.precipitation_probability_max;
+        if (Array.isArray(values) && typeof values[0] === 'number') {
+          setProbability(values[0]);
+        }
+      })
+      .catch(() => {}); // unreachable/blocked network -- silently skip the advisory
+
+    return () => { cancelled = true; };
+  }, [centre && centre.id, date]);
+
+  return probability;
+}
+
+function RainWarning({ centre, date }) {
+  const t = useT();
+  const probability = useRainForecast(centre, date);
+  if (probability === null || probability <= 40) return null;
+
+  return h('div', { className: 'mb-4' },
+    h(Callout, { tone: 'warning', icon: 'fa-cloud-rain' },
+      h('p', { className: 'font-bold mb-1' }, t('weatherWarningTitle')),
+      h('p', { className: 'text-sm m-0' }, t('weatherWarningBody', { pct: Math.round(probability) }))
+    )
+  );
+}
+
+// ---------------------------------------------------------------------------
+// QR gate pass
+// ---------------------------------------------------------------------------
+
+function QRTicket({ booking, farmer }) {
+  const t = useT();
+  const boxRef = useRef(null);
+
+  useEffect(() => {
+    if (!boxRef.current || !window.QRCode) return;
+    boxRef.current.innerHTML = '';
+    new window.QRCode(boxRef.current, {
+      text: JSON.stringify({ token: booking.token, farmerId: farmer.id }),
+      width: 168,
+      height: 168,
+      colorDark: '#16241C',
+      colorLight: '#FFFFFF',
+      correctLevel: window.QRCode.CorrectLevel.M,
+    });
+  }, [booking.token, farmer.id]);
+
+  return h('div', { className: 'rounded-2xl border-2 border-dashed border-kisan-ink/25 bg-kisan-paperRaised p-5 text-center' },
+    h('div', { className: 'flex items-center justify-center gap-2 text-kisan-ink/60 text-xs font-bold uppercase tracking-wide mb-3' },
+      h('i', { className: 'fa-solid fa-ticket' }),
+      t('ticketTitle')
     ),
-    h('div', { className: 'row' },
-      h('span', { className: 'k' }, 'Permitted this season'),
-      h('span', { className: 'v' }, `${farmer.permittedQuantityQuintals} q`)
-    ),
-    h('div', { className: 'row' },
-      h('span', { className: 'k' }, 'Bank account'),
-      h('span', { className: 'v' }, farmer.bankAccountLast4 ? `•••• ${farmer.bankAccountLast4}` : '—')
+    h('div', { className: 'qr-box flex justify-center mb-3', ref: boxRef }),
+    h('div', { className: 'text-2xl font-extrabold tracking-wide mb-1' }, booking.token),
+    h('div', { className: 'text-sm text-kisan-ink/60 mb-3' }, `${t('ticketFarmer')}: ${farmer.name}`),
+    h('div', { className: 'border-t border-dashed border-kisan-ink/20 pt-3 text-xs text-kisan-ink/60 flex items-center justify-center gap-2' },
+      h('i', { className: 'fa-solid fa-qrcode' }),
+      t('ticketScanNote')
     )
   );
 }
@@ -194,14 +682,16 @@ function FarmerProfileCard({ farmer }) {
 // ---------------------------------------------------------------------------
 
 function AlternativeCard({ title, detail, onBook }) {
-  return h('div', { className: 'alt-card' },
-    h('div', { className: 'h' }, title),
-    h('div', { className: 'd' }, detail),
-    h('button', { className: 'btn btn-secondary', onClick: onBook }, 'Book this instead')
+  const t = useT();
+  return h('div', { className: 'rounded-2xl border border-kisan-ink/10 bg-kisan-paperRaised p-3.5 mb-2.5' },
+    h('div', { className: 'font-bold mb-0.5' }, title),
+    h('div', { className: 'text-sm text-kisan-ink/60 mb-2.5' }, detail),
+    h(SecondaryButton, { onClick: onBook }, t('bookThisInsteadBtn'))
   );
 }
 
 function BookScreen({ farmer, centres, onSwitchTab }) {
+  const t = useT();
   const [quintals, setQuintals] = useState('');
   const [centreId, setCentreId] = useState(centres[0] ? centres[0].id : '');
   const [date, setDate] = useState(todayPlusOne());
@@ -213,6 +703,16 @@ function BookScreen({ farmer, centres, onSwitchTab }) {
     if (!centreId && centres[0]) setCentreId(centres[0].id);
   }, [centres]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const selectedCentre = useMemo(() => centres.find((c) => c.id === centreId) || null, [centres, centreId]);
+
+  // Field-level errors -- computed on every keystroke so a bad value is
+  // flagged where it's typed, not only after the farmer hits "Book slot".
+  const quintalsError = useMemo(
+    () => (quintals === '' ? null : KisanValidation.validateQuantity(quintals, farmer.permittedQuantityQuintals)),
+    [quintals, farmer.permittedQuantityQuintals]
+  );
+  const dateError = useMemo(() => KisanValidation.validateBookingDate(date, today()), [date]);
+
   async function submit(overrides = {}) {
     const payload = {
       farmerId: farmer.id,
@@ -220,8 +720,10 @@ function BookScreen({ farmer, centres, onSwitchTab }) {
       centreId: overrides.centreId || centreId,
       date: overrides.date || date,
     };
-    if (!payload.quintals || payload.quintals <= 0 || !payload.centreId || !payload.date) {
-      setResult({ httpStatus: 400, body: { status: 'BAD_REQUEST', errors: ['Enter a quantity, centre, and date.'] } });
+    const quantityErr = KisanValidation.validateQuantity(payload.quintals, farmer.permittedQuantityQuintals);
+    const dateErr = KisanValidation.validateBookingDate(payload.date, today());
+    if (quantityErr || dateErr || !payload.centreId) {
+      setResult({ httpStatus: 400, body: { status: 'BAD_REQUEST', errors: [quantityErr, dateErr, !payload.centreId ? t('enterAllFields') : null].filter(Boolean) } });
       return;
     }
     setSubmitting(true);
@@ -250,94 +752,108 @@ function BookScreen({ farmer, centres, onSwitchTab }) {
 
   if (status === 'BOOKED') {
     const b = result.body.booking;
-    return h('div', { className: 'callout callout-success' },
-      h('div', { className: 'token-display' },
-        h('div', { className: 'badge badge-success' }, 'Booked'),
-        h('div', { className: 't' }, b.token)
+    return h('div', null,
+      h(Callout, { tone: 'success' },
+        h('div', { className: 'flex justify-center mb-3' }, h(Badge, { tone: 'success' },
+          h('i', { className: 'fa-solid fa-circle-check' }), t('bookedBadge')
+        )),
+        h(QRTicket, { booking: b, farmer }),
+        h('div', { className: 'mt-3' },
+          h(Card, null,
+            h(Row, { k: t('rowQuantity'), v: `${b.quintals} q` }),
+            h(Row, { k: t('rowDate'), v: formatDate(b.date) }),
+            h(Row, { k: t('rowSlotsLeft'), v: result.body.remainingSlots })
+          )
+        ),
+        h('p', { className: 'text-sm text-kisan-ink/60 flex items-center gap-2 mt-3' },
+          h('i', { className: 'fa-solid fa-circle-info' }), t('bringTokenNote')
+        )
       ),
-      h('div', { className: 'card', style: { marginTop: '0.5rem' } },
-        h('div', { className: 'row' }, h('span', { className: 'k' }, 'Quantity'), h('span', { className: 'v' }, `${b.quintals} q`)),
-        h('div', { className: 'row' }, h('span', { className: 'k' }, 'Date'), h('span', { className: 'v' }, formatDate(b.date))),
-        h('div', { className: 'row' }, h('span', { className: 'k' }, 'Slots left after this'), h('span', { className: 'v' }, result.body.remainingSlots))
-      ),
-      h('p', { style: { fontSize: '0.9rem', color: 'var(--ink-60)' } }, 'Bring this token when you arrive at the gate.'),
-      h('div', { className: 'btn-row' },
-        h('button', { className: 'btn btn-primary', onClick: () => onSwitchTab('status') }, 'See status'),
-        h('button', { className: 'btn btn-secondary', onClick: reset }, 'Book another')
+      h('div', { className: 'flex gap-2.5 mt-4' },
+        h(PrimaryButton, { onClick: () => onSwitchTab('status'), icon: 'fa-route' }, t('seeStatusBtn')),
+        h(SecondaryButton, { onClick: reset }, t('bookAnotherBtn'))
       )
     );
   }
 
   if (status === 'NEEDS_OFFICER_REVIEW') {
-    return h('div', { className: 'callout callout-warning' },
-      h('div', { className: 'badge badge-warning', style: { marginBottom: '0.6rem' } }, 'Needs officer review'),
-      h('p', { style: { margin: '0 0 0.5rem', fontWeight: 700 } }, result.body.message),
-      result.body.landEstimateQuintals !== undefined && h('p', { style: { margin: '0 0 0.5rem', fontSize: '0.9rem', color: 'var(--ink-60)' } },
-        `Land-record estimate: ${result.body.landEstimateQuintals} q. You declared: ${result.body.requestedQuintals} q.`
+    return h('div', null,
+      h(Callout, { tone: 'warning', icon: 'fa-user-clock' },
+        h('div', { className: 'inline-block mb-2' }, h(Badge, { tone: 'warning' }, t('needsReviewBadge'))),
+        h('p', { className: 'font-bold mb-1' }, result.body.message),
+        result.body.landEstimateQuintals !== undefined && h('p', { className: 'text-sm text-kisan-ink/60 mb-1' },
+          t('landEstimateNote', { est: result.body.landEstimateQuintals, req: result.body.requestedQuintals })
+        ),
+        h('p', { className: 'text-sm text-kisan-ink/60 m-0' }, t('reviewNoteShort'))
       ),
-      h('p', { style: { margin: 0, fontSize: '0.9rem', color: 'var(--ink-60)' } },
-        'This is not a rejection -- an officer will call to confirm before this booking is placed.'
-      ),
-      h('button', { className: 'btn btn-secondary', style: { marginTop: '0.8rem' }, onClick: reset }, 'Try a different quantity')
+      h('div', { className: 'mt-3' }, h(SecondaryButton, { onClick: reset }, t('tryDifferentQtyBtn')))
     );
   }
 
   if (status === 'NO_CAPACITY') {
     const alt = result.body.alternatives || {};
     return h('div', null,
-      h('div', { className: 'callout callout-warning', style: { marginBottom: '1rem' } },
-        h('p', { style: { margin: '0 0 0.3rem', fontWeight: 700 } }, "Don't load your trolley yet"),
-        h('p', { style: { margin: 0, fontSize: '0.9rem', color: 'var(--ink-60)' } },
-          "This slot is full for that centre and date. It's not a rejection -- here's where there's room instead."
+      h('div', { className: 'mb-4' },
+        h(Callout, { tone: 'warning', icon: 'fa-triangle-exclamation' },
+          h('p', { className: 'font-bold mb-1' }, t('dontLoadTitle')),
+          h('p', { className: 'text-sm m-0' }, t('noCapacityNote'))
         )
       ),
       alt.nextDateAtThisCentre && h(AlternativeCard, {
-        title: `Same centre, ${formatDate(alt.nextDateAtThisCentre.date)}`,
-        detail: `${alt.nextDateAtThisCentre.remainingSlots} slots open`,
+        title: t('sameCentreTitle', { date: formatDate(alt.nextDateAtThisCentre.date) }),
+        detail: t('slotsOpen', { n: alt.nextDateAtThisCentre.remainingSlots }),
         onBook: () => submit({ date: alt.nextDateAtThisCentre.date }),
       }),
       (alt.nearbyCentres || []).map((c) => h(AlternativeCard, {
         key: c.centreId,
-        title: `${c.name} (${c.distanceKm} km away)`,
-        detail: `${c.remainingSlots} slots open today`,
+        title: t('kmAway', { name: c.name, km: c.distanceKm }),
+        detail: t('slotsOpenToday', { n: c.remainingSlots }),
         onBook: () => submit({ centreId: c.centreId }),
       })),
       (!alt.nextDateAtThisCentre && (alt.nearbyCentres || []).length === 0) &&
-        h('p', { className: 'empty' }, 'No alternatives found nearby -- please try again tomorrow or contact your centre.'),
-      h('button', { className: 'btn btn-secondary', style: { marginTop: '0.4rem' }, onClick: reset }, 'Back')
+        h('p', { className: 'text-center text-sm text-kisan-ink/60 py-4' }, t('noAlternativesNote')),
+      h('div', { className: 'mt-2' }, h(SecondaryButton, { onClick: reset }, t('backBtn')))
     );
   }
 
   if (status === 'NOT_FOUND' || status === 'BAD_REQUEST') {
-    const message = result.body.message || (result.body.errors || []).join(', ') || 'Something went wrong.';
-    return h('div', { className: 'callout callout-danger' },
-      h('p', { style: { margin: '0 0 0.6rem', fontWeight: 700 } }, message),
-      h('button', { className: 'btn btn-secondary', onClick: reset }, 'Try again')
+    const message = result.body.message || (result.body.errors || []).join(', ') || t('somethingWrong');
+    return h('div', null,
+      h(Callout, { tone: 'danger', icon: 'fa-circle-exclamation' }, h('p', { className: 'font-bold m-0' }, message)),
+      h('div', { className: 'mt-3' }, h(SecondaryButton, { onClick: reset }, t('tryAgainBtn')))
     );
   }
 
   return h('div', null,
-    networkError && h('div', { className: 'callout callout-danger', style: { marginBottom: '1rem' } }, networkError),
-    h('div', { className: 'field' },
-      h('label', null, 'Quantity (quintals)'),
-      h('input', {
-        type: 'number', min: 0, step: '0.1', value: quintals, placeholder: 'e.g. 40',
-        onChange: (e) => setQuintals(e.target.value),
-      })
-    ),
-    h('div', { className: 'field' },
-      h('label', null, 'Centre'),
-      h('select', { value: centreId, onChange: (e) => setCentreId(e.target.value) },
-        centres.map((c) => h('option', { key: c.id, value: c.id }, `${c.name} (${c.code})`))
+    networkError && h('div', { className: 'mb-4' }, h(Callout, { tone: 'danger', icon: 'fa-circle-exclamation' }, networkError)),
+    h(Card, { className: '!p-4' },
+      h('div', { className: 'mb-4' },
+        h(FieldLabel, { icon: 'fa-weight-hanging' }, t('fieldQuantity')),
+        h('input', {
+          type: 'number', min: 0, max: KisanValidation.ABSOLUTE_QUANTITY_CAP_QUINTALS, step: '0.1', value: quintals, placeholder: t('quantityPlaceholder'),
+          className: inputClass + (quintalsError ? ' border-red-500' : ''), onChange: (e) => setQuintals(e.target.value),
+        }),
+        quintalsError && h('p', { className: 'text-xs text-red-600 mt-1' }, quintalsError)
+      ),
+      h('div', { className: 'mb-4' },
+        h(FieldLabel, { icon: 'fa-warehouse' }, t('fieldCentre')),
+        h('select', { value: centreId, className: inputClass, onChange: (e) => setCentreId(e.target.value) },
+          centres.map((c) => h('option', { key: c.id, value: c.id }, `${c.name} (${c.code})`))
+        )
+      ),
+      h('div', null,
+        h(FieldLabel, { icon: 'fa-calendar-day' }, t('fieldDate')),
+        h('input', {
+          type: 'date', value: date, min: today(), max: maxBookingDate(),
+          className: inputClass + (dateError ? ' border-red-500' : ''), onChange: (e) => setDate(e.target.value),
+        }),
+        dateError && h('p', { className: 'text-xs text-red-600 mt-1' }, dateError)
       )
     ),
-    h('div', { className: 'field' },
-      h('label', null, 'Date'),
-      h('input', { type: 'date', value: date, onChange: (e) => setDate(e.target.value) })
-    ),
-    h('button', {
-      className: 'btn btn-primary', onClick: () => submit(), disabled: submitting || centres.length === 0,
-    }, submitting ? 'Booking…' : 'Book slot')
+    h(RainWarning, { centre: selectedCentre, date }),
+    h(PrimaryButton, {
+      onClick: () => submit(), disabled: submitting || centres.length === 0 || !quintals || !!quintalsError || !!dateError, icon: 'fa-check-circle',
+    }, submitting ? t('bookingEllipsis') : t('bookButton'))
   );
 }
 
@@ -346,37 +862,48 @@ function BookScreen({ farmer, centres, onSwitchTab }) {
 // ---------------------------------------------------------------------------
 
 function MoistureCard({ moisture }) {
+  const t = useT();
   if (!moisture) {
-    return h('div', { className: 'card' },
-      h('p', { style: { margin: 0, color: 'var(--ink-60)', fontSize: '0.9rem' } }, 'Awaiting moisture test at the gate.')
+    return h(Card, null,
+      h('p', { className: 'm-0 text-sm text-kisan-ink/60 flex items-center gap-2' },
+        h('i', { className: 'fa-solid fa-hourglass-half' }), t('awaitingMoisture')
+      )
     );
   }
-  return h('div', { className: 'card' },
-    h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' } },
-      h('span', { style: { fontWeight: 700 } }, 'Moisture test'),
-      h('span', { className: `badge ${VERDICT_BADGE[moisture.verdict] || 'badge-neutral'}` }, VERDICT_LABEL[moisture.verdict] || moisture.verdict)
+  return h(Card, null,
+    h('div', { className: 'flex justify-between items-center mb-2' },
+      h('span', { className: 'font-bold flex items-center gap-2' }, h('i', { className: 'fa-solid fa-droplet text-kisan-gold' }), t('moistureTestLabel')),
+      h(Badge, { tone: moisture.verdict === 'accept' ? 'success' : moisture.verdict === 'cut' ? 'warning' : 'danger' },
+        t(VERDICT_KEY[moisture.verdict] || moisture.verdict)
+      )
     ),
-    h('div', { className: 'row' }, h('span', { className: 'k' }, 'Reading'), h('span', { className: 'v' }, `${moisture.meanMoisture}% (limit ${moisture.limitPct}%)`)),
-    h('div', { className: 'row' }, h('span', { className: 'k' }, 'Meter'), h('span', { className: 'v' }, moisture.meterId)),
-    h('div', { className: 'row' }, h('span', { className: 'k' }, 'Calibrated'), h('span', { className: 'v' }, formatDate(moisture.calibrationDate)))
+    h(Row, { k: t('rowReading'), v: t('readingValue', { value: moisture.meanMoisture, limit: moisture.limitPct }) }),
+    h(Row, { k: t('rowMeter'), v: moisture.meterId }),
+    h(Row, { k: t('rowCalibrated'), v: formatDate(moisture.calibrationDate) })
   );
 }
 
 function Timeline({ stages }) {
-  return h('ul', { className: 'timeline' },
-    stages.map((s) => h('li', { key: s.key },
-      h('span', { className: `dot ${s.done ? 'done' : 'pending'}` }, s.done ? '✓' : ''),
+  const t = useT();
+  return h('ul', { className: 'list-none m-0 p-0' },
+    stages.map((s) => h('li', { key: s.key, className: 'flex gap-3 py-3 border-b border-kisan-ink/[0.06] last:border-b-0' },
+      h('span', {
+        className: `w-8 h-8 rounded-full flex-none mt-0.5 flex items-center justify-center text-sm ${
+          s.done ? 'bg-kisan-green text-white' : 'bg-kisan-ink/5 text-kisan-ink/30 border border-kisan-ink/15'
+        }`,
+      }, h('i', { className: `fa-solid ${STAGE_ICON[s.key] || 'fa-circle'}` })),
       h('div', null,
-        h('div', { className: 'stage-label' }, s.label),
+        h('div', { className: 'font-bold' }, t(STAGE_LABEL_KEY[s.key]) || s.label),
         s.done
-          ? h('div', { className: 'stage-at' }, formatDateTime(s.at))
-          : h('div', { className: 'stage-note' }, s.key === 'payment' ? 'Released after the bill is finalised' : 'Pending')
+          ? h('div', { className: 'text-sm text-kisan-ink/60' }, formatDateTime(s.at))
+          : h('div', { className: 'text-sm text-kisan-ink/30' }, s.key === 'payment' ? t('stagePaymentPendingNote') : t('stagePendingNote'))
       )
     ))
   );
 }
 
 function StatusScreen({ farmer, onSwitchTab }) {
+  const t = useT();
   const [state, setState] = useState({ loading: true, data: null, notFound: false, error: null });
 
   useEffect(() => {
@@ -386,33 +913,33 @@ function StatusScreen({ farmer, onSwitchTab }) {
       .then(({ httpStatus, body }) => {
         if (cancelled) return;
         if (httpStatus === 404) return setState({ loading: false, data: null, notFound: true, error: null });
-        if (httpStatus !== 200) return setState({ loading: false, data: null, notFound: false, error: body.message || 'Could not load status.' });
+        if (httpStatus !== 200) return setState({ loading: false, data: null, notFound: false, error: body.message || t('couldNotLoadStatus') });
         setState({ loading: false, data: body, notFound: false, error: null });
       })
       .catch((err) => !cancelled && setState({ loading: false, data: null, notFound: false, error: err.message }));
     return () => { cancelled = true; };
   }, [farmer.id]);
 
-  if (state.loading) return h('p', { className: 'loading' }, 'Loading status…');
-  if (state.error) return h('div', { className: 'callout callout-danger' }, state.error);
+  if (state.loading) return h('p', { className: 'text-sm text-kisan-ink/60 py-2' }, t('loadingStatus'));
+  if (state.error) return h(Callout, { tone: 'danger', icon: 'fa-circle-exclamation' }, state.error);
   if (state.notFound) {
     return h('div', null,
-      h('p', { className: 'empty' }, 'No bookings yet.'),
-      h('button', { className: 'btn btn-primary', onClick: () => onSwitchTab('book') }, 'Book a slot')
+      h('p', { className: 'text-center text-sm text-kisan-ink/60 py-5' }, t('noBookingsYet')),
+      h(PrimaryButton, { onClick: () => onSwitchTab('book'), icon: 'fa-calendar-check' }, t('bookSlotBtn'))
     );
   }
 
   const { booking, stages, moisture } = state.data;
   return h('div', null,
-    h('div', { className: 'card' },
-      h('div', { className: 'row' }, h('span', { className: 'k' }, 'Token'), h('span', { className: 'v' }, booking.token)),
-      h('div', { className: 'row' }, h('span', { className: 'k' }, 'Centre'), h('span', { className: 'v' }, `${booking.centreName} (${booking.centreCode})`)),
-      h('div', { className: 'row' }, h('span', { className: 'k' }, 'Date'), h('span', { className: 'v' }, formatDate(booking.serviceDate))),
-      h('div', { className: 'row' }, h('span', { className: 'k' }, 'Quantity'), h('span', { className: 'v' }, `${booking.declaredQuantityQuintals} q`))
+    h(Card, null,
+      h(Row, { k: t('rowToken'), v: booking.token }),
+      h(Row, { k: t('rowCentre'), v: `${booking.centreName} (${booking.centreCode})` }),
+      h(Row, { k: t('rowDate'), v: formatDate(booking.serviceDate) }),
+      h(Row, { k: t('rowQuantity'), v: `${booking.declaredQuantityQuintals} q` })
     ),
-    h('h2', null, 'Progress'),
-    h('div', { className: 'card' }, h(Timeline, { stages })),
-    h('h2', null, 'Moisture'),
+    h(SectionHeading, { icon: 'fa-route' }, t('sectionProgress')),
+    h(Card, null, h(Timeline, { stages })),
+    h(SectionHeading, { icon: 'fa-droplet' }, t('sectionMoisture')),
     h(MoistureCard, { moisture })
   );
 }
@@ -422,6 +949,7 @@ function StatusScreen({ farmer, onSwitchTab }) {
 // ---------------------------------------------------------------------------
 
 function JFormScreen({ farmer, onSwitchTab }) {
+  const t = useT();
   const [state, setState] = useState({ loading: true, data: null, notFound: false, error: null });
 
   useEffect(() => {
@@ -431,48 +959,48 @@ function JFormScreen({ farmer, onSwitchTab }) {
       .then(({ httpStatus, body }) => {
         if (cancelled) return;
         if (httpStatus === 404) return setState({ loading: false, data: null, notFound: true, error: null });
-        if (httpStatus !== 200) return setState({ loading: false, data: null, notFound: false, error: body.message || 'Could not load the bill.' });
+        if (httpStatus !== 200) return setState({ loading: false, data: null, notFound: false, error: body.message || t('couldNotLoadBill') });
         setState({ loading: false, data: body, notFound: false, error: null });
       })
       .catch((err) => !cancelled && setState({ loading: false, data: null, notFound: false, error: err.message }));
     return () => { cancelled = true; };
   }, [farmer.id]);
 
-  if (state.loading) return h('p', { className: 'loading' }, 'Loading bill…');
-  if (state.error) return h('div', { className: 'callout callout-danger' }, state.error);
+  if (state.loading) return h('p', { className: 'text-sm text-kisan-ink/60 py-2' }, t('loadingBill'));
+  if (state.error) return h(Callout, { tone: 'danger', icon: 'fa-circle-exclamation' }, state.error);
   if (state.notFound) {
     return h('div', null,
-      h('p', { className: 'empty' }, 'No bill raised yet -- this appears once your lot is weighed and finalised.'),
-      h('button', { className: 'btn btn-secondary', onClick: () => onSwitchTab('status') }, 'Check status')
+      h('p', { className: 'text-center text-sm text-kisan-ink/60 py-5' }, t('noBillYet')),
+      h(SecondaryButton, { onClick: () => onSwitchTab('status') }, t('checkStatusBtn'))
     );
   }
 
   const j = state.data;
   return h('div', null,
-    h('div', { className: 'card' },
-      h('div', { className: 'row' }, h('span', { className: 'k' }, 'J-Form'), h('span', { className: 'v' }, j.jFormNumber)),
-      h('div', { className: 'row' }, h('span', { className: 'k' }, 'Issued'), h('span', { className: 'v' }, formatDateTime(j.issuedAt))),
-      h('div', { className: 'row' }, h('span', { className: 'k' }, 'Net weight'), h('span', { className: 'v' }, `${j.quintalsProcured} q`)),
-      h('div', { className: 'row' }, h('span', { className: 'k' }, 'MSP rate'), h('span', { className: 'v' }, `${formatINR(j.mspRate)}/q`)),
-      h('div', { className: 'row' }, h('span', { className: 'k' }, 'Gross value'), h('span', { className: 'v' }, formatINR(j.grossAmount)))
+    h(Card, null,
+      h(Row, { k: t('rowJForm'), v: j.jFormNumber }),
+      h(Row, { k: t('rowIssued'), v: formatDateTime(j.issuedAt) }),
+      h(Row, { k: t('rowNetWeight'), v: `${j.quintalsProcured} q` }),
+      h(Row, { k: t('rowMspRate'), v: `${formatINR(j.mspRate)}/q` }),
+      h(Row, { k: t('rowGrossValue'), v: formatINR(j.grossAmount) })
     ),
-    h('h2', null, 'Deductions'),
-    h('div', { className: 'card' },
+    h(SectionHeading, { icon: 'fa-file-invoice-dollar' }, t('sectionDeductions')),
+    h(Card, null,
       j.deductions.length === 0
-        ? h('p', { style: { margin: 0, color: 'var(--ink-60)', fontSize: '0.9rem' } }, 'No deductions.')
-        : j.deductions.map((d, i) => h('div', { className: 'deduction-row', key: i },
-            h('span', null, d.type, d.description ? h('div', { className: 'desc' }, d.description) : null),
+        ? h('p', { className: 'm-0 text-sm text-kisan-ink/60' }, t('noDeductions'))
+        : j.deductions.map((d, i) => h('div', { className: 'flex justify-between py-1.5 text-sm', key: i },
+            h('span', null, d.type, d.description ? h('div', { className: 'text-xs text-kisan-ink/60' }, d.description) : null),
             h('span', null, `− ${formatINR(d.amount)}`)
           )),
-      j.deductions.length > 0 && h('div', { className: 'deduction-row', style: { borderTop: '1px solid var(--ink-10)', marginTop: '0.3rem', paddingTop: '0.5rem', fontWeight: 700 } },
-        h('span', null, 'Total deductions'),
+      j.deductions.length > 0 && h('div', { className: 'flex justify-between border-t border-kisan-ink/10 mt-1 pt-2 font-bold' },
+        h('span', null, t('totalDeductions')),
         h('span', null, `− ${formatINR(j.totalDeductions)}`)
       )
     ),
-    h('div', { className: 'callout callout-success' },
-      h('div', { className: 'net-payable' },
-        h('div', { className: 'amount' }, formatINR(j.netPayable)),
-        h('div', { className: 'rate' }, `Net payable · ${formatINR(j.effectiveRatePerQuintal)}/q effective (MSP ${formatINR(j.mspRate)}/q)`)
+    h(Callout, { tone: 'success' },
+      h('div', { className: 'text-center py-1' },
+        h('div', { className: 'text-3xl font-extrabold text-kisan-green' }, formatINR(j.netPayable)),
+        h('div', { className: 'text-sm text-kisan-ink/60 mt-1' }, t('netPayableLabel', { rate: formatINR(j.effectiveRatePerQuintal), msp: formatINR(j.mspRate) }))
       )
     )
   );
@@ -482,9 +1010,40 @@ function JFormScreen({ farmer, onSwitchTab }) {
 // App
 // ---------------------------------------------------------------------------
 
-function App() {
-  const [farmers, setFarmers] = useState([]);
-  const [farmerId, setFarmerId] = useState('');
+// Resolves who's logged in from the session cookie (never a client-side
+// picker) and redirects to the shared login screen if there's no farmer
+// session -- this page no longer lets anyone browse another farmer's
+// data by picking a name from a list; the server enforces that too, but
+// the UI shouldn't dangle an option that only ever 403s.
+function useFarmerSession() {
+  const [state, setState] = useState({ loading: true, farmerId: null });
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchJson('/api/auth/me')
+      .then(({ httpStatus, body }) => {
+        if (cancelled) return;
+        if (httpStatus !== 200 || body.role !== 'farmer') {
+          window.location.href = '/login.html';
+          return;
+        }
+        setState({ loading: false, farmerId: body.farmerId });
+      })
+      .catch(() => { if (!cancelled) window.location.href = '/login.html'; });
+    return () => { cancelled = true; };
+  }, []);
+
+  return state;
+}
+
+async function logout() {
+  await fetchJson('/api/auth/logout', { method: 'POST' }).catch(() => {});
+  window.location.href = '/login.html';
+}
+
+function AppBody() {
+  const t = useT();
+  const session = useFarmerSession();
   const [farmer, setFarmer] = useState(null);
   const [farmerLoading, setFarmerLoading] = useState(false);
   const [centres, setCentres] = useState([]);
@@ -492,52 +1051,103 @@ function App() {
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    fetchJson('/api/farmers').then(({ body }) => setFarmers(Array.isArray(body) ? body : [])).catch((err) => setError(err.message));
     fetchJson('/api/centres').then(({ body }) => setCentres(Array.isArray(body) ? body : [])).catch((err) => setError(err.message));
   }, []);
 
-  const pickFarmer = useCallback((id) => {
-    setFarmerId(id);
-    setFarmer(null);
-    setTab('book');
-    if (!id) return;
+  useEffect(() => {
+    if (!session.farmerId) return;
     setFarmerLoading(true);
-    fetchJson(`/api/farmers/${id}`)
+    fetchJson(`/api/farmers/${session.farmerId}`)
       .then(({ httpStatus, body }) => {
         if (httpStatus === 200) setFarmer(body);
-        else setError(body.message || 'Could not load farmer.');
+        else setError(body.message || t('couldNotLoadFarmer'));
       })
       .catch((err) => setError(err.message))
       .finally(() => setFarmerLoading(false));
-  }, []);
+  }, [session.farmerId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  return h('div', null,
-    h('h1', null, 'Kisan Slot'),
-    h('p', { className: 'sub' }, 'Book your procurement slot and track your lot.'),
-    h('div', { className: 'nav' },
-      h('a', { href: '/declaration.html' }, 'Officer declaration'), ' · ',
-      h('a', { href: '/dashboard.html' }, 'District dashboard')
+  const tabs = [
+    { key: 'book', label: t('tabBook'), icon: 'fa-calendar-check' },
+    { key: 'status', label: t('tabStatus'), icon: 'fa-route' },
+    { key: 'jform', label: t('tabJForm'), icon: 'fa-file-invoice' },
+  ];
+
+  if (session.loading) {
+    return h('div', { className: 'max-w-md mx-auto px-4 py-8' },
+      h('p', { className: 'text-sm text-kisan-ink/60' }, t('checkingSession'))
+    );
+  }
+
+  return h('div', { className: 'max-w-md mx-auto px-4 pb-16' },
+    h('div', { className: 'flex items-center gap-2 text-xs font-semibold text-kisan-ink/70 py-3' },
+      h('a', { href: '/declaration.html', className: 'flex items-center gap-1.5 bg-kisan-ink/5 px-3 py-1.5 rounded-full' },
+        h('i', { className: 'fa-solid fa-clipboard-list' }), t('navDeclaration')
+      ),
+      h('a', { href: '/dashboard.html', className: 'flex items-center gap-1.5 bg-kisan-ink/5 px-3 py-1.5 rounded-full' },
+        h('i', { className: 'fa-solid fa-chart-simple' }), t('navDashboard')
+      ),
+      h('button', {
+        type: 'button', onClick: logout,
+        className: 'ml-auto flex items-center gap-1.5 bg-kisan-ink/5 px-3 py-1.5 rounded-full',
+      },
+        h('i', { className: 'fa-solid fa-right-from-bracket' }), t('logoutBtn')
+      )
     ),
 
-    error && h('div', { className: 'callout callout-danger', style: { marginBottom: '1rem' } }, error),
+    error && h('div', { className: 'mb-4' }, h(Callout, { tone: 'danger', icon: 'fa-circle-exclamation' }, error)),
 
-    h(FarmerPicker, { farmers, farmerId, onPick: pickFarmer }),
-
-    farmerLoading && h('p', { className: 'loading' }, 'Loading your details…'),
+    farmerLoading && h('p', { className: 'text-sm text-kisan-ink/60 py-2' }, t('loadingYourDetails')),
 
     farmer && farmer.needsOfficerReview && h(OfficerReviewCard, { farmer }),
 
     farmer && !farmer.needsOfficerReview && h('div', null,
-      h(FarmerProfileCard, { farmer }),
-      h('div', { className: 'tabs' },
-        h('button', { className: `tab ${tab === 'book' ? 'active' : ''}`, onClick: () => setTab('book') }, 'Book'),
-        h('button', { className: `tab ${tab === 'status' ? 'active' : ''}`, onClick: () => setTab('status') }, 'Status'),
-        h('button', { className: `tab ${tab === 'jform' ? 'active' : ''}`, onClick: () => setTab('jform') }, 'J-Form')
+      h('div', { className: 'mb-4' }, h(FarmerProfileCard, { farmer })),
+      h('div', { className: 'grid grid-cols-3 gap-2 mb-4' },
+        tabs.map((tb) => h('button', {
+          key: tb.key,
+          type: 'button',
+          onClick: () => setTab(tb.key),
+          className: `flex flex-col items-center justify-center gap-1 min-h-[3.5rem] rounded-2xl text-sm font-bold border-2 transition ${
+            tab === tb.key ? 'bg-kisan-ink text-white border-kisan-ink' : 'bg-kisan-paperRaised text-kisan-ink border-kisan-ink/15'
+          }`,
+        },
+          h('i', { className: `fa-solid ${tb.icon}` }),
+          tb.label
+        ))
       ),
       tab === 'book' && h(BookScreen, { farmer, centres, onSwitchTab: setTab }),
       tab === 'status' && h(StatusScreen, { farmer, onSwitchTab: setTab }),
       tab === 'jform' && h(JFormScreen, { farmer, onSwitchTab: setTab })
     )
+  );
+}
+
+function App() {
+  const [lang, setLang] = useState(getInitialLang);
+
+  useEffect(() => {
+    document.documentElement.lang = lang;
+  }, [lang]);
+
+  const changeLang = useCallback((l) => {
+    setLang(l);
+    persistLang(l);
+  }, []);
+
+  return h(LangContext.Provider, { value: lang },
+    h('header', { className: 'sticky top-0 z-10 bg-kisan-ink text-white px-4 py-3 shadow-md' },
+      h('div', { className: 'max-w-md mx-auto flex items-center justify-between gap-3' },
+        h('div', { className: 'flex items-center gap-2.5 min-w-0' },
+          h('i', { className: 'fa-solid fa-wheat-awn text-kisan-gold text-xl flex-none' }),
+          h('div', { className: 'min-w-0' },
+            h('h1', { className: 'text-lg font-extrabold leading-tight truncate' }, translate(lang, 'appTitle')),
+            h('p', { className: 'text-xs text-white/70 leading-tight truncate' }, translate(lang, 'appSubtitle'))
+          )
+        ),
+        h(LanguageSelector, { lang, onChange: changeLang })
+      )
+    ),
+    h(AppBody)
   );
 }
 

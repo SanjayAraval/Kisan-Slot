@@ -1,5 +1,6 @@
 'use strict';
 
+const crypto = require('crypto');
 const { YIELD_QUINTALS_PER_ACRE, OVER_DECLARE_CAP_MULTIPLIER, MOISTURE_ACCEPT_MAX_PCT } = require('./constants');
 
 function round(value, decimals = 2) {
@@ -220,9 +221,109 @@ async function loadJForm(pool, farmerId) {
   };
 }
 
+// The registration flow's live khasra lookup -- called as the operator/
+// farmer types the number, before final submission, so a match can
+// pre-fill the review step. Real land_records data, never the old
+// hardcoded demo numbers.
+async function lookupLandRecordByNumber(pool, landRecordNumber) {
+  const result = await pool.query(
+    `SELECT id, land_record_number, farmer_name, village, survey_number, extent_acres, crop
+     FROM land_records WHERE land_record_number = $1`,
+    [landRecordNumber]
+  );
+  const row = result.rows[0];
+  if (!row) return null;
+  return {
+    id: row.id,
+    landRecordNumber: row.land_record_number,
+    farmerName: row.farmer_name,
+    village: row.village,
+    surveyNumber: row.survey_number,
+    extentAcres: Number(row.extent_acres),
+    crop: row.crop,
+  };
+}
+
+function normalizeName(name) {
+  return String(name || '').trim().toLowerCase();
+}
+
+// Implements the registration flow's three-state outcome:
+//   - khasra matches a land record under the same name -> linked, verified
+//   - khasra matches a land record under a DIFFERENT name -> linked, but
+//     flagged as tenant cultivation (needs officer review, same as any
+//     other tenant farmer -- not a rejection)
+//   - khasra doesn't match anything -> registered anyway with land_record_id
+//     NULL and the claimed details kept for an officer to verify later;
+//     this is exactly the existing needsOfficerReview("no land record")
+//     path, not a separate "pending" status.
+// `operator` is the authenticated operator's {id, name} for an assisted
+// registration, or null for self-service -- taken from the verified
+// session by the caller, never from client-supplied input.
+async function registerFarmer(pool, input, operator) {
+  const existing = await pool.query('SELECT id FROM farmers WHERE phone = $1', [input.mobile]);
+  if (existing.rows[0]) {
+    return { type: 'CONFLICT', message: 'a farmer is already registered with this mobile number' };
+  }
+
+  let landRecordId = null;
+  let isTenant = false;
+  if (input.khasra) {
+    const record = await lookupLandRecordByNumber(pool, input.khasra);
+    if (record) {
+      landRecordId = record.id;
+      isTenant = normalizeName(record.farmerName) !== normalizeName(input.name);
+    }
+  }
+
+  const farmerId = crypto.randomUUID();
+  try {
+    await pool.query(
+      `INSERT INTO farmers (
+         id, farmer_name, land_record_id, is_tenant, phone, aadhaar_number,
+         bank_account_number, bank_ifsc, bank_account_holder_name,
+         registered_channel, registered_by_operator_id, last_season_dbt_status,
+         claimed_land_record_number, claimed_extent_acres, claimed_crop
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+      [
+        farmerId, input.name, landRecordId, isTenant, input.mobile, input.aadhaar || null,
+        input.bankAccountNumber || null, input.bankIfsc || null, input.name,
+        operator ? 'counter' : 'app', operator ? operator.id : null,
+        // NULL ("no last-season history yet") is what a brand-new farmer
+        // actually is, and the column allows it -- but see testUtils/
+        // fixtures.js's insertFarmer comment: nothing in this app reads
+        // last_season_dbt_status today, and the test database (pg-mem)
+        // mis-evaluates a nullable CHECK(col IN (...)) against NULL as a
+        // violation, unlike real Postgres. 'success' sidesteps that with
+        // no real-world effect until this field is actually surfaced.
+        'success',
+        landRecordId ? null : input.khasra || null,
+        landRecordId ? null : (input.landSizeAcres ?? null),
+        landRecordId ? null : (input.crop || null),
+      ]
+    );
+  } catch (err) {
+    if (err.code === '23505') {
+      return { type: 'CONFLICT', message: 'a farmer is already registered with this mobile number' };
+    }
+    throw err;
+  }
+
+  return {
+    type: 'OK',
+    farmerId,
+    verified: landRecordId !== null && !isTenant,
+    needsOfficerReview: landRecordId === null || isTenant,
+    landRecordId,
+    isTenant,
+  };
+}
+
 module.exports = {
   listFarmers,
   loadFarmerDetail,
   loadLotStatus,
   loadJForm,
+  lookupLandRecordByNumber,
+  registerFarmer,
 };

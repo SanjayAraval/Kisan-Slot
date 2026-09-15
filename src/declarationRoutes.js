@@ -3,8 +3,18 @@
 const express = require('express');
 const { toApiInputs, computeCentreDayCapacity, upsertCentreDay, upsertDailyInputs } = require('./capacityService');
 const { RECOMMENDED_ACTIONS } = require('./constants');
+const { requireAuth, requireCentreScope } = require('./authMiddleware');
+const { validatePositiveIntegerInBounds } = require('../public/validation');
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+// Plausible day-to-day operational ceilings for a single procurement
+// centre -- generous enough for any real centre, tight enough to catch a
+// stray extra zero (e.g. 60000 gangs) before it reaches the capacity
+// engine or the DB.
+const GUNNY_BAGS_MAX = 200000;
+const HAMALI_GANG_MAX = 500;
+const TRUCK_EVACUATION_MAX = 2000;
 
 function isNonEmptyString(v) {
   return typeof v === 'string' && v.length > 0;
@@ -29,10 +39,17 @@ function validateDeclarationBody(body) {
   }
   if (!isPositiveNumber(body.weighbridgeOperatingMinutes)) errors.push('weighbridgeOperatingMinutes must be a positive number');
   if (!isPositiveNumber(body.bagsPerTruck)) errors.push('bagsPerTruck must be a positive number');
-  if (!isNonNegativeNumber(body.hamaliGangCount)) errors.push('hamaliGangCount must be a non-negative number');
+
+  // Bags, gangs and trucks are physical counts -- never zero, negative or
+  // fractional, and bounded to something a real centre could plausibly
+  // have on hand in a day.
+  const gangErr = validatePositiveIntegerInBounds(body.hamaliGangCount, { max: HAMALI_GANG_MAX, label: 'hamaliGangCount' });
+  if (gangErr) errors.push(gangErr);
   if (!isNonNegativeNumber(body.hamaliBagsPerGangPerDay)) errors.push('hamaliBagsPerGangPerDay must be a non-negative number');
-  if (!isNonNegativeNumber(body.gunnyBagsAvailable)) errors.push('gunnyBagsAvailable must be a non-negative number');
-  if (!isNonNegativeNumber(body.truckEvacuationCapacity)) errors.push('truckEvacuationCapacity must be a non-negative number');
+  const gunnyErr = validatePositiveIntegerInBounds(body.gunnyBagsAvailable, { max: GUNNY_BAGS_MAX, label: 'gunnyBagsAvailable' });
+  if (gunnyErr) errors.push(gunnyErr);
+  const truckErr = validatePositiveIntegerInBounds(body.truckEvacuationCapacity, { max: TRUCK_EVACUATION_MAX, label: 'truckEvacuationCapacity' });
+  if (truckErr) errors.push(truckErr);
   if (!isPositiveNumber(body.yardCapacityTonnes)) errors.push('yardCapacityTonnes must be a positive number');
   if (!isNonNegativeNumber(body.undispatchedTonnes)) errors.push('undispatchedTonnes must be a non-negative number');
   if (!isPositiveNumber(body.avgTruckLoadTonnes)) errors.push('avgTruckLoadTonnes must be a positive number');
@@ -54,16 +71,28 @@ function createDeclarationRoutes(pool) {
 
   router.get('/centres', async (req, res, next) => {
     try {
-      const result = await pool.query('SELECT id, name, code, centre_type FROM centres ORDER BY name');
+      const result = await pool.query('SELECT id, name, code, centre_type, latitude, longitude FROM centres ORDER BY name');
       return res.status(200).json(
-        result.rows.map((r) => ({ id: r.id, name: r.name, code: r.code, centreType: r.centre_type }))
+        result.rows.map((r) => ({
+          id: r.id,
+          name: r.name,
+          code: r.code,
+          centreType: r.centre_type,
+          // Real, already-stored coordinates -- not derived or guessed --
+          // so the farmer screen can ask a weather API about this exact
+          // centre instead of a hardcoded or district-average location.
+          latitude: Number(r.latitude),
+          longitude: Number(r.longitude),
+        }))
       );
     } catch (err) {
       return next(err);
     }
   });
 
-  router.get('/centres/:id/declaration', async (req, res, next) => {
+  const centreScope = requireCentreScope(pool, (req) => req.params.id);
+
+  router.get('/centres/:id/declaration', requireAuth, centreScope, async (req, res, next) => {
     const { date } = req.query;
     if (!isNonEmptyString(date) || !DATE_RE.test(date)) {
       return res.status(400).json({ status: 'BAD_REQUEST', errors: ['date query param is required as YYYY-MM-DD'] });
@@ -82,7 +111,7 @@ function createDeclarationRoutes(pool) {
     }
   });
 
-  router.post('/centres/:id/declaration', async (req, res, next) => {
+  router.post('/centres/:id/declaration', requireAuth, centreScope, async (req, res, next) => {
     const body = req.body || {};
     const errors = validateDeclarationBody(body);
     if (errors.length > 0) {

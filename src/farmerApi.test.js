@@ -12,6 +12,7 @@ const {
   insertLandRecord,
   insertBooking,
 } = require('./testUtils/fixtures');
+const { districtOfficerAgent } = require('./testUtils/authTestHelpers');
 
 const DATE = '2026-09-04';
 const TOKEN = 'FARMER-TEST-001';
@@ -24,16 +25,19 @@ function round(value, decimals = 2) {
 function setup() {
   const pool = createTestPool();
   const app = createApp(pool);
-  return { pool, app };
+  // District officer: unrestricted read access to any farmer (oversight),
+  // matching the fixtures' default district ('Medak').
+  const agent = districtOfficerAgent(app);
+  return { pool, app, agent };
 }
 
 describe('GET /api/farmers', () => {
   test('lists farmers by name', async () => {
-    const { app, pool } = setup();
+    const { app, agent, pool } = setup();
     await insertFarmer(pool, { farmerName: 'Zzyx Reddy' });
     await insertFarmer(pool, { farmerName: 'Aarav Rao' });
 
-    const res = await request(app).get('/api/farmers');
+    const res = await agent.get('/api/farmers');
     expect(res.status).toBe(200);
     expect(res.body.map((f) => f.name)).toEqual(['Aarav Rao', 'Zzyx Reddy']);
   });
@@ -41,13 +45,13 @@ describe('GET /api/farmers', () => {
 
 describe('GET /api/farmers/:id', () => {
   test('404s for an unknown farmer', async () => {
-    const { app } = setup();
-    const res = await request(app).get('/api/farmers/00000000-0000-0000-0000-000000000000');
+    const { app, agent } = setup();
+    const res = await agent.get('/api/farmers/00000000-0000-0000-0000-000000000000');
     expect(res.status).toBe(404);
   });
 
   test('a matched, non-tenant farmer: full detail, no review flag', async () => {
-    const { app, pool } = setup();
+    const { app, agent, pool } = setup();
     const landRecordId = await insertLandRecord(pool, { extentAcres: 5, village: 'Kondapur' }); // land estimate 120q, cap 156q
     const farmerId = await insertFarmer(pool, {
       landRecordId,
@@ -56,7 +60,7 @@ describe('GET /api/farmers/:id', () => {
     });
     await pool.query('UPDATE farmers SET bank_account_number = $1 WHERE id = $2', ['123456789012', farmerId]);
 
-    const res = await request(app).get(`/api/farmers/${farmerId}`);
+    const res = await agent.get(`/api/farmers/${farmerId}`);
     expect(res.status).toBe(200);
     expect(res.body.name).toBe('Ravi Kumar');
     expect(res.body.village).toBe('Kondapur');
@@ -68,10 +72,10 @@ describe('GET /api/farmers/:id', () => {
   });
 
   test('a farmer with no land record needs officer review', async () => {
-    const { app, pool } = setup();
+    const { app, agent, pool } = setup();
     const farmerId = await insertFarmer(pool, { landRecordId: null });
 
-    const res = await request(app).get(`/api/farmers/${farmerId}`);
+    const res = await agent.get(`/api/farmers/${farmerId}`);
     expect(res.status).toBe(200);
     expect(res.body.hasLandRecord).toBe(false);
     expect(res.body.needsOfficerReview).toBe(true);
@@ -80,11 +84,11 @@ describe('GET /api/farmers/:id', () => {
   });
 
   test('a tenant farmer needs officer review even though a land record exists', async () => {
-    const { app, pool } = setup();
+    const { app, agent, pool } = setup();
     const landRecordId = await insertLandRecord(pool, { extentAcres: 3 });
     const farmerId = await insertFarmer(pool, { landRecordId, isTenant: true });
 
-    const res = await request(app).get(`/api/farmers/${farmerId}`);
+    const res = await agent.get(`/api/farmers/${farmerId}`);
     expect(res.status).toBe(200);
     expect(res.body.hasLandRecord).toBe(true);
     expect(res.body.isTenant).toBe(true);
@@ -110,18 +114,18 @@ describe('GET /api/farmers/:id/status', () => {
   }
 
   test('404s when the farmer has no bookings on file', async () => {
-    const { app, pool } = setup();
+    const { app, agent, pool } = setup();
     const farmerId = await insertFarmerWithLand(pool, {});
 
-    const res = await request(app).get(`/api/farmers/${farmerId}/status`);
+    const res = await agent.get(`/api/farmers/${farmerId}/status`);
     expect(res.status).toBe(404);
   });
 
   test('a freshly booked lot: only the booking itself, every stage pending', async () => {
-    const { app, pool } = setup();
+    const { app, agent, pool } = setup();
     const { farmerId } = await setupBookedLot(pool);
 
-    const res = await request(app).get(`/api/farmers/${farmerId}/status`);
+    const res = await agent.get(`/api/farmers/${farmerId}/status`);
     expect(res.status).toBe(200);
     expect(res.body.booking.token).toBe(TOKEN);
     expect(res.body.booking.centreCode).toBe('MDK-TEST-01');
@@ -131,16 +135,16 @@ describe('GET /api/farmers/:id/status', () => {
   });
 
   test('after the full lot workflow: stages, moisture, and weighment reflect real timestamps', async () => {
-    const { app, pool } = setup();
+    const { app, agent, pool } = setup();
     const { farmerId, bookingId } = await setupBookedLot(pool);
 
-    await request(app).post(`/api/lots/${bookingId}/checkin`).send({ token: TOKEN });
-    await request(app)
+    await agent.post(`/api/lots/${bookingId}/checkin`).send({ token: TOKEN });
+    await agent
       .post(`/api/lots/${bookingId}/quality`)
       .send({ meterId: 'MTR-07', calibrationDate: '2026-08-01', samples: [16.5, 16.8, 16.7] });
-    await request(app).post(`/api/lots/${bookingId}/weigh`).send({ grossKg: 4200, tareKg: 200 });
+    await agent.post(`/api/lots/${bookingId}/weigh`).send({ grossKg: 4200, tareKg: 200 });
 
-    const res = await request(app).get(`/api/farmers/${farmerId}/status`);
+    const res = await agent.get(`/api/farmers/${farmerId}/status`);
     expect(res.status).toBe(200);
 
     const byKey = Object.fromEntries(res.body.stages.map((s) => [s.key, s]));
@@ -157,10 +161,10 @@ describe('GET /api/farmers/:id/status', () => {
     expect(res.body.moisture.limitPct).toBe(17.0);
     expect(res.body.weighment.netKg).toBe(4000);
 
-    const jform = await request(app).post(`/api/lots/${bookingId}/jform`).send({ mspRate: 2183 });
+    const jform = await agent.post(`/api/lots/${bookingId}/jform`).send({ mspRate: 2183 });
     expect(jform.status).toBe(201);
 
-    const res2 = await request(app).get(`/api/farmers/${farmerId}/status`);
+    const res2 = await agent.get(`/api/farmers/${farmerId}/status`);
     const byKey2 = Object.fromEntries(res2.body.stages.map((s) => [s.key, s]));
     expect(byKey2.bill_raised.done).toBe(true);
   });
@@ -168,19 +172,19 @@ describe('GET /api/farmers/:id/status', () => {
 
 describe('GET /api/farmers/:id/jform', () => {
   test('404s when no J-Form has been issued yet', async () => {
-    const { app, pool } = setup();
+    const { app, agent, pool } = setup();
     const centreId = await insertCentre(pool);
     await insertDailyInputs(pool, { centreId, serviceDate: DATE });
     const centreDayId = await insertCentreDay(pool, { centreId, serviceDate: DATE });
     const farmerId = await insertFarmerWithLand(pool, {});
     await insertBooking(pool, { centreDayId, farmerId, token: TOKEN });
 
-    const res = await request(app).get(`/api/farmers/${farmerId}/jform`);
+    const res = await agent.get(`/api/farmers/${farmerId}/jform`);
     expect(res.status).toBe(404);
   });
 
   test('itemises deductions and derives net payable and effective rate', async () => {
-    const { app, pool } = setup();
+    const { app, agent, pool } = setup();
     const centreId = await insertCentre(pool);
     await insertDailyInputs(pool, { centreId, serviceDate: DATE });
     const centreDayId = await insertCentreDay(pool, { centreId, serviceDate: DATE, bagsCapacity: 4800, bagsBooked: 100 });
@@ -194,12 +198,12 @@ describe('GET /api/farmers/:id/jform', () => {
       status: 'booked',
     });
 
-    await request(app).post(`/api/lots/${bookingId}/checkin`).send({ token: TOKEN });
-    await request(app)
+    await agent.post(`/api/lots/${bookingId}/checkin`).send({ token: TOKEN });
+    await agent
       .post(`/api/lots/${bookingId}/quality`)
       .send({ meterId: 'MTR-01', calibrationDate: '2026-08-01', samples: [16.0, 16.0, 16.0] });
-    await request(app).post(`/api/lots/${bookingId}/weigh`).send({ grossKg: 4200, tareKg: 200 }); // netKg 4000 -> 40q
-    await request(app)
+    await agent.post(`/api/lots/${bookingId}/weigh`).send({ grossKg: 4200, tareKg: 200 }); // netKg 4000 -> 40q
+    await agent
       .post(`/api/lots/${bookingId}/jform`)
       .send({
         mspRate: 2183,
@@ -209,7 +213,7 @@ describe('GET /api/farmers/:id/jform', () => {
         ],
       });
 
-    const res = await request(app).get(`/api/farmers/${farmerId}/jform`);
+    const res = await agent.get(`/api/farmers/${farmerId}/jform`);
     expect(res.status).toBe(200);
     expect(res.body.quintalsProcured).toBe(40);
     expect(res.body.mspRate).toBe(2183);

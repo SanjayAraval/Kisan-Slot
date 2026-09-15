@@ -2,37 +2,77 @@
 
 const path = require('path');
 const express = require('express');
+const cookieParser = require('cookie-parser');
 const { attemptBooking, findAlternatives } = require('./bookingService');
 const { computeCentreDayCapacity } = require('./capacityService');
 const { createLotRoutes } = require('./lotRoutes');
 const { createDeclarationRoutes } = require('./declarationRoutes');
 const { createDashboardRoutes } = require('./dashboardRoutes');
 const { createFarmerRoutes } = require('./farmerRoutes');
+const { createAuthRoutes } = require('./authRoutes');
+const { requireAuth } = require('./authMiddleware');
+const { validateQuantity, validateBookingDate } = require('../public/validation');
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Centres operate on India's calendar day, not the host machine's -- a
+// server left in its default UTC timezone (typical for a cloud VM) would
+// otherwise think "today" is still yesterday for the first 5.5 hours of
+// every IST day, letting past-dated bookings through. Deriving the date
+// from an IST-shifted instant sidesteps the host's TZ setting entirely.
+const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+function todayInIST() {
+  return new Date(Date.now() + IST_OFFSET_MS).toISOString().slice(0, 10);
+}
 
 function isNonEmptyString(v) {
   return typeof v === 'string' && v.length > 0;
 }
 
-function validateBookingBody(body) {
+function isValidId(v) {
+  return isNonEmptyString(v) && UUID_RE.test(v);
+}
+
+function validateBookingBody(body, today) {
   const errors = [];
-  if (!isNonEmptyString(body.farmerId)) errors.push('farmerId is required');
-  if (!isNonEmptyString(body.centreId)) errors.push('centreId is required');
-  if (!isNonEmptyString(body.date) || !DATE_RE.test(body.date)) errors.push('date is required as YYYY-MM-DD');
-  if (typeof body.quintals !== 'number' || !Number.isFinite(body.quintals) || body.quintals <= 0) {
+  if (!isValidId(body.farmerId)) errors.push('farmerId is required and must be a valid id');
+  if (!isValidId(body.centreId)) errors.push('centreId is required and must be a valid id');
+
+  const dateErr = validateBookingDate(body.date, today);
+  if (dateErr) errors.push(dateErr);
+
+  if (typeof body.quintals !== 'number' || !Number.isFinite(body.quintals)) {
     errors.push('quintals must be a positive number');
+  } else {
+    const quantityErr = validateQuantity(body.quintals);
+    if (quantityErr) errors.push(quantityErr);
   }
   return errors;
 }
 
-function createApp(pool) {
+// `now` is injectable so tests aren't at the mercy of the wall clock --
+// mirrors the `today` override on runNightlyReallocation.
+function createApp(pool, { now = todayInIST } = {}) {
   const app = express();
   app.use(express.json());
+  app.use(cookieParser());
   app.use(express.static(path.join(__dirname, '..', 'public')));
 
-  app.post('/api/bookings', async (req, res, next) => {
-    const errors = validateBookingBody(req.body || {});
+  app.use('/api/auth', createAuthRoutes(pool));
+
+  // Booking is a farmer acting for themselves, or an operator assisting
+  // one -- never an officer, and never a farmer booking as someone else.
+  app.post('/api/bookings', requireAuth, (req, res, next) => {
+    if (req.user.role === 'farmer' && req.body && req.body.farmerId !== req.user.farmerId) {
+      return res.status(403).json({ status: 'FORBIDDEN', message: 'farmers may only book for themselves' });
+    }
+    if (req.user.role !== 'farmer' && req.user.role !== 'operator') {
+      return res.status(403).json({ status: 'FORBIDDEN', message: 'only farmers and assisted operators can create bookings' });
+    }
+    next();
+  }, async (req, res, next) => {
+    const errors = validateBookingBody(req.body || {}, now());
     if (errors.length > 0) {
       return res.status(400).json({ status: 'BAD_REQUEST', errors });
     }
@@ -64,6 +104,9 @@ function createApp(pool) {
 
       case 'NOT_FOUND':
         return res.status(404).json({ status: 'NOT_FOUND', message: result.message });
+
+      case 'ALREADY_BOOKED':
+        return res.status(409).json({ status: 'ALREADY_BOOKED', message: result.message });
 
       case 'NO_CAPACITY': {
         const alternatives = await findAlternatives(pool, { centreId, date, bagsNeeded: result.bagsNeeded });
@@ -122,12 +165,18 @@ function createApp(pool) {
   app.use('/api', createDashboardRoutes(pool));
   app.use('/api', createFarmerRoutes(pool));
 
+  // Catch-all for anything a route didn't already turn into a specific,
+  // farmer-facing status (404/409/400 etc). Never forwards the raw error
+  // (a Postgres message like "numeric field overflow" means nothing to a
+  // farmer) -- log it for an operator to investigate and answer with a
+  // generic message instead.
   // eslint-disable-next-line no-unused-vars
   app.use((err, req, res, next) => {
-    res.status(500).json({ status: 'ERROR', message: err.message });
+    console.error(err);
+    res.status(500).json({ status: 'ERROR', message: 'Something went wrong on our end. Please try again.' });
   });
 
   return app;
 }
 
-module.exports = { createApp };
+module.exports = { createApp, todayInIST };

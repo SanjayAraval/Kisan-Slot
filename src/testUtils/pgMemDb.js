@@ -5,7 +5,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { newDb } = require('pg-mem');
 
-const MIGRATION_PATH = path.join(__dirname, '..', '..', 'db', 'migrations', '001_init_schema.sql');
+const MIGRATIONS_DIR = path.join(__dirname, '..', '..', 'db', 'migrations');
 
 // A fresh in-memory Postgres-compatible database with the real schema
 // applied, for tests that need actual SQL (transactions, constraints,
@@ -20,8 +20,12 @@ function createTestPool() {
     });
   });
 
-  const sql = fs.readFileSync(MIGRATION_PATH, 'utf8');
-  db.public.none(sql);
+  // Every migration file, in filename order -- same order a real deploy
+  // would apply them in.
+  const migrationFiles = fs.readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith('.sql')).sort();
+  for (const file of migrationFiles) {
+    db.public.none(fs.readFileSync(path.join(MIGRATIONS_DIR, file), 'utf8'));
+  }
 
   const { Pool } = db.adapters.createPg();
   return new Pool();

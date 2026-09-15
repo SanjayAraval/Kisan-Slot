@@ -2,6 +2,7 @@
 
 const express = require('express');
 const { loadDistrictDashboard, releaseBags } = require('./dashboardService');
+const { requireAuth, requireRole, requireCentreScope } = require('./authMiddleware');
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -16,20 +17,22 @@ function isPositiveNumber(v) {
 function createDashboardRoutes(pool) {
   const router = express.Router();
 
-  router.get('/dashboard', async (req, res, next) => {
+  // District-wide view -- district_officer only, and scoped to their own
+  // district (never the whole state).
+  router.get('/dashboard', requireAuth, requireRole('district_officer'), async (req, res, next) => {
     const { date } = req.query;
     if (!isNonEmptyString(date) || !DATE_RE.test(date)) {
       return res.status(400).json({ status: 'BAD_REQUEST', errors: ['date query param is required as YYYY-MM-DD'] });
     }
     try {
-      const dashboard = await loadDistrictDashboard(pool, date);
+      const dashboard = await loadDistrictDashboard(pool, date, req.user.district);
       return res.status(200).json(dashboard);
     } catch (err) {
       return next(err);
     }
   });
 
-  router.post('/dashboard/centres/:id/release-bags', async (req, res, next) => {
+  router.post('/dashboard/centres/:id/release-bags', requireAuth, requireCentreScope(pool, (req) => req.params.id), async (req, res, next) => {
     const body = req.body || {};
     const errors = [];
     if (!isNonEmptyString(body.date) || !DATE_RE.test(body.date)) errors.push('date is required as YYYY-MM-DD');

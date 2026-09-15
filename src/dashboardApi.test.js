@@ -12,6 +12,7 @@ const {
   insertLotWeighment,
   DAILY_INPUT_BASELINE,
 } = require('./testUtils/fixtures');
+const { districtOfficerAgent } = require('./testUtils/authTestHelpers');
 
 const DATE = '2026-09-06'; // dashboard date
 const BURN_DAYS = ['2026-09-03', '2026-09-04', '2026-09-05']; // the 3 days before DATE
@@ -19,7 +20,8 @@ const BURN_DAYS = ['2026-09-03', '2026-09-04', '2026-09-05']; // the 3 days befo
 function setup() {
   const pool = createTestPool();
   const app = createApp(pool);
-  return { pool, app };
+  const agent = districtOfficerAgent(app);
+  return { pool, app, agent };
 }
 
 // Backs one day of the 3-day burn-rate window with a completed lot that
@@ -34,13 +36,13 @@ async function insertBurnDay(pool, { centreId, serviceDate, netKg }) {
 
 describe('GET /api/dashboard', () => {
   test('400s without a date', async () => {
-    const { app } = setup();
-    const res = await request(app).get('/api/dashboard');
+    const { app, agent } = setup();
+    const res = await agent.get('/api/dashboard');
     expect(res.status).toBe(400);
   });
 
   test('summary, centre grid (sorted by urgency), alerts, and evacuation backlog', async () => {
-    const { app, pool } = setup();
+    const { app, agent, pool } = setup();
 
     // Centre A: thin gunny stock (100) against a steady burn rate of
     // 100 bags/day -> 1.0 days of cover, under the 1.5-day threshold.
@@ -70,7 +72,7 @@ describe('GET /api/dashboard', () => {
     const farmerC = await insertFarmerWithLand(pool, {});
     await insertBooking(pool, { centreDayId: centreDayC, farmerId: farmerC, status: 'booked' });
 
-    const res = await request(app).get('/api/dashboard').query({ date: DATE });
+    const res = await agent.get('/api/dashboard').query({ date: DATE });
     expect(res.status).toBe(200);
 
     expect(res.body.summary).toEqual({
@@ -112,11 +114,11 @@ describe('GET /api/dashboard', () => {
 
 describe('POST /api/dashboard/centres/:id/release-bags', () => {
   test('adds bags to the declaration and recomputes capacity', async () => {
-    const { app, pool } = setup();
+    const { app, agent, pool } = setup();
     const centreId = await insertCentre(pool);
     await insertDailyInputs(pool, { centreId, serviceDate: DATE, overrides: { gunnyBagsAvailable: 100 } });
 
-    const res = await request(app)
+    const res = await agent
       .post(`/api/dashboard/centres/${centreId}/release-bags`)
       .send({ date: DATE, additionalBags: 400 });
 
@@ -133,10 +135,10 @@ describe('POST /api/dashboard/centres/:id/release-bags', () => {
   });
 
   test('404s when the centre has no declaration on file for that date', async () => {
-    const { app, pool } = setup();
+    const { app, agent, pool } = setup();
     const centreId = await insertCentre(pool);
 
-    const res = await request(app)
+    const res = await agent
       .post(`/api/dashboard/centres/${centreId}/release-bags`)
       .send({ date: DATE, additionalBags: 100 });
 
@@ -144,11 +146,11 @@ describe('POST /api/dashboard/centres/:id/release-bags', () => {
   });
 
   test('400s on a non-positive additionalBags', async () => {
-    const { app, pool } = setup();
+    const { app, agent, pool } = setup();
     const centreId = await insertCentre(pool);
     await insertDailyInputs(pool, { centreId, serviceDate: DATE });
 
-    const res = await request(app)
+    const res = await agent
       .post(`/api/dashboard/centres/${centreId}/release-bags`)
       .send({ date: DATE, additionalBags: 0 });
 

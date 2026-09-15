@@ -6,6 +6,7 @@ const { YIELD_QUINTALS_PER_ACRE, BAGS_PER_QUINTAL, OVER_DECLARE_CAP_MULTIPLIER, 
 const { createRng } = require('./seed/random');
 const { generateVillageNames, generatePersonName, generateFatherName } = require('./seed/names');
 const { SHARED_BASELINE, CENTRES } = require('./seed/centres');
+const { buildEmployees } = require('./seed/employees');
 
 const args = process.argv.slice(2);
 const DRY_RUN = args.includes('--dry-run');
@@ -492,7 +493,7 @@ async function batchInsert(client, table, columns, rows, getValues, chunkSize = 
   }
 }
 
-async function writeToDatabase({ centres, centreDailyInputs, centreDays, landRecords, farmers, bookings, weighments }) {
+async function writeToDatabase({ centres, centreDailyInputs, centreDays, landRecords, farmers, bookings, weighments, employees }) {
   const { Client } = require('pg');
   const client = new Client();
   await client.connect();
@@ -592,6 +593,14 @@ async function writeToDatabase({ centres, centreDailyInputs, centreDays, landRec
       (w) => [w.id, w.bookingId, w.mode, w.grossKg, w.tareKg, w.netKg]
     );
 
+    await batchInsert(
+      client,
+      'employees',
+      ['id', 'employee_id', 'password_hash', 'name', 'role', 'centre_id', 'district'],
+      employees,
+      (e) => [e.id, e.employeeId, e.passwordHash, e.name, e.role, e.centreId, e.district]
+    );
+
     await client.query('COMMIT');
   } catch (err) {
     await client.query('ROLLBACK');
@@ -605,7 +614,7 @@ async function writeToDatabase({ centres, centreDailyInputs, centreDays, landRec
 // Summary
 // ---------------------------------------------------------------------------
 
-function printSummary({ centres, centreDays, landRecords, farmers, bookings, overDeclaredCount, burnSummary }) {
+function printSummary({ centres, centreDays, landRecords, farmers, bookings, overDeclaredCount, burnSummary, employees }) {
   const line = (s = '') => console.log(s);
 
   line('='.repeat(72));
@@ -661,6 +670,11 @@ function printSummary({ centres, centreDays, landRecords, farmers, bookings, ove
     line(`    ${b.centreName.padEnd(24)} avg burn: ${String(b.avgDailyBurn).padStart(6)} bags/day   gunny (${addDays(START_DATE, 1)}): ${String(b.gunnyTomorrow).padStart(6)}   days of cover: ${b.daysOfCover}${flag}`);
   }
 
+  line('\nDemo employee logins (password: demo1234):');
+  for (const e of employees) {
+    line(`    ${e.employeeId.padEnd(8)} ${e.role.padEnd(17)} ${e.name}`);
+  }
+
   line('\n' + '='.repeat(72));
 }
 
@@ -681,6 +695,7 @@ async function main() {
     farmers
   );
   const { bookings, overDeclaredCount } = buildBookings(rng, centreDays, farmers);
+  const employees = buildEmployees(centres);
 
   const allCentreDays = [...centreDays, ...historicalCentreDays];
   const allBookings = [...bookings, ...historicalBookings];
@@ -696,10 +711,11 @@ async function main() {
       farmers,
       bookings: allBookings,
       weighments: historicalWeighments,
+      employees,
     });
   }
 
-  printSummary({ centres, centreDays, landRecords, farmers, bookings, overDeclaredCount, burnSummary });
+  printSummary({ centres, centreDays, landRecords, farmers, bookings, overDeclaredCount, burnSummary, employees });
 }
 
 main().catch((err) => {

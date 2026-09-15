@@ -2,6 +2,7 @@
 
 const express = require('express');
 const { checkinLot, recordQuality, recordWeighment, issueJForm, recordDispatch } = require('./lotService');
+const { requireAuth, requireBookingCentreScope } = require('./authMiddleware');
 
 const STATUS_BY_RESULT_TYPE = {
   NOT_FOUND: 404,
@@ -43,6 +44,15 @@ function lotAction(pool, fn, successStatus) {
 
 function createLotRoutes(pool) {
   const router = express.Router();
+
+  // Every lot action (checkin/quality/weigh/jform/dispatch) is a
+  // centre-side operation -- gated to the centre_officer/operator
+  // assigned to that booking's centre, or any district_officer for that
+  // centre's district. Mounted at '/:id' (not a bare `.use()`) so
+  // `req.params.id` is actually populated by the time this middleware
+  // runs -- a path-less `router.use()` runs before Express parses any
+  // route's own `:id`, and req.params would be empty here otherwise.
+  router.use('/:id', requireAuth, requireBookingCentreScope(pool));
 
   router.post(
     '/:id/checkin',

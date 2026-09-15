@@ -11,6 +11,7 @@ const {
   insertFarmerWithLand,
   insertBooking,
 } = require('./testUtils/fixtures');
+const { districtOfficerAgent } = require('./testUtils/authTestHelpers');
 
 const TODAY = '2026-09-04';
 const TOKEN = 'TESTTOKEN-001';
@@ -40,20 +41,22 @@ describe('lot workflow', () => {
   test('full happy path: checkin -> quality (accept) -> weigh -> J-Form -> dispatch, feeding the EWMA', async () => {
     const pool = createTestPool();
     const app = createApp(pool);
+
+    const agent = districtOfficerAgent(app);
     const { centreId, bookingId } = await setupBookedLot(pool);
 
-    const checkin = await request(app).post(`/api/lots/${bookingId}/checkin`).send({ token: TOKEN });
+    const checkin = await agent.post(`/api/lots/${bookingId}/checkin`).send({ token: TOKEN });
     expect(checkin.status).toBe(200);
     expect(checkin.body.checkedInAt).toBeDefined();
 
-    const quality = await request(app)
+    const quality = await agent
       .post(`/api/lots/${bookingId}/quality`)
       .send({ meterId: 'MTR-01', calibrationDate: '2026-08-01', samples: [16.5, 16.8, 16.7] });
     expect(quality.status).toBe(201);
     expect(quality.body.mean).toBeCloseTo(16.7, 1);
     expect(quality.body.verdict).toBe('accept');
 
-    const weigh = await request(app)
+    const weigh = await agent
       .post(`/api/lots/${bookingId}/weigh`)
       .send({ grossKg: 4200, tareKg: 200 });
     expect(weigh.status).toBe(201);
@@ -62,7 +65,7 @@ describe('lot workflow', () => {
     expect(weigh.body.bagsUsed).toBe(100); // 4000 / 40
     expect(weigh.body.completedAt).toBeDefined();
 
-    const jform = await request(app)
+    const jform = await agent
       .post(`/api/lots/${bookingId}/jform`)
       .send({
         mspRate: 2183,
@@ -78,7 +81,7 @@ describe('lot workflow', () => {
     expect(jform.body.netPayable).toBe(40 * 2183 - 70);
     expect(jform.body.supersedesJFormId).toBeNull();
 
-    const dispatch = await request(app)
+    const dispatch = await agent
       .post(`/api/lots/${bookingId}/dispatch`)
       .send({ vehicleNumber: 'TS01AB1234' });
     expect(dispatch.status).toBe(201);
@@ -115,11 +118,13 @@ describe('lot workflow', () => {
   test('a moisture rejection at 19.4% stops the lot before weighing', async () => {
     const pool = createTestPool();
     const app = createApp(pool);
+
+    const agent = districtOfficerAgent(app);
     const { bookingId } = await setupBookedLot(pool);
 
-    await request(app).post(`/api/lots/${bookingId}/checkin`).send({ token: TOKEN });
+    await agent.post(`/api/lots/${bookingId}/checkin`).send({ token: TOKEN });
 
-    const quality = await request(app)
+    const quality = await agent
       .post(`/api/lots/${bookingId}/quality`)
       .send({ meterId: 'MTR-01', calibrationDate: '2026-08-01', samples: [19.3, 19.4, 19.5] });
 
@@ -130,7 +135,7 @@ describe('lot workflow', () => {
     const bookingRow = await pool.query('SELECT status FROM bookings WHERE id = $1', [bookingId]);
     expect(bookingRow.rows[0].status).toBe('rejected');
 
-    const weigh = await request(app).post(`/api/lots/${bookingId}/weigh`).send({ grossKg: 4200, tareKg: 200 });
+    const weigh = await agent.post(`/api/lots/${bookingId}/weigh`).send({ grossKg: 4200, tareKg: 200 });
     expect(weigh.status).toBe(409);
     expect(weigh.body.status).toBe('CONFLICT');
   });
@@ -138,24 +143,28 @@ describe('lot workflow', () => {
   test('a cut verdict (between 17.0% and 19.0%) still allows weighing to proceed', async () => {
     const pool = createTestPool();
     const app = createApp(pool);
+
+    const agent = districtOfficerAgent(app);
     const { bookingId } = await setupBookedLot(pool);
 
-    await request(app).post(`/api/lots/${bookingId}/checkin`).send({ token: TOKEN });
-    const quality = await request(app)
+    await agent.post(`/api/lots/${bookingId}/checkin`).send({ token: TOKEN });
+    const quality = await agent
       .post(`/api/lots/${bookingId}/quality`)
       .send({ meterId: 'MTR-01', calibrationDate: '2026-08-01', samples: [18.0, 18.2, 18.1] });
     expect(quality.body.verdict).toBe('cut');
 
-    const weigh = await request(app).post(`/api/lots/${bookingId}/weigh`).send({ grossKg: 4200, tareKg: 200 });
+    const weigh = await agent.post(`/api/lots/${bookingId}/weigh`).send({ grossKg: 4200, tareKg: 200 });
     expect(weigh.status).toBe(201);
   });
 
   test('checkin rejects a mismatched token without changing booking state', async () => {
     const pool = createTestPool();
     const app = createApp(pool);
+
+    const agent = districtOfficerAgent(app);
     const { bookingId } = await setupBookedLot(pool);
 
-    const res = await request(app).post(`/api/lots/${bookingId}/checkin`).send({ token: 'WRONG-TOKEN' });
+    const res = await agent.post(`/api/lots/${bookingId}/checkin`).send({ token: 'WRONG-TOKEN' });
     expect(res.status).toBe(400);
 
     const bookingRow = await pool.query('SELECT status, checked_in_at FROM bookings WHERE id = $1', [bookingId]);
@@ -166,19 +175,21 @@ describe('lot workflow', () => {
   test('a J-Form correction supersedes the prior one and links a revision, never updating it', async () => {
     const pool = createTestPool();
     const app = createApp(pool);
+
+    const agent = districtOfficerAgent(app);
     const { bookingId } = await setupBookedLot(pool);
 
-    await request(app).post(`/api/lots/${bookingId}/checkin`).send({ token: TOKEN });
-    await request(app)
+    await agent.post(`/api/lots/${bookingId}/checkin`).send({ token: TOKEN });
+    await agent
       .post(`/api/lots/${bookingId}/quality`)
       .send({ meterId: 'MTR-01', calibrationDate: '2026-08-01', samples: [16.0, 16.0, 16.0] });
-    await request(app).post(`/api/lots/${bookingId}/weigh`).send({ grossKg: 4200, tareKg: 200 });
+    await agent.post(`/api/lots/${bookingId}/weigh`).send({ grossKg: 4200, tareKg: 200 });
 
-    const first = await request(app).post(`/api/lots/${bookingId}/jform`).send({ mspRate: 2183 });
+    const first = await agent.post(`/api/lots/${bookingId}/jform`).send({ mspRate: 2183 });
     expect(first.status).toBe(201);
     expect(first.body.supersedesJFormId).toBeNull();
 
-    const second = await request(app)
+    const second = await agent
       .post(`/api/lots/${bookingId}/jform`)
       .send({ mspRate: 2200, deductions: [{ type: 'correction', amount: 10 }] });
     expect(second.status).toBe(201);
@@ -197,17 +208,19 @@ describe('lot workflow', () => {
   test('platform mode weighing sums per-bag entries instead of gross/tare', async () => {
     const pool = createTestPool();
     const app = createApp(pool);
+
+    const agent = districtOfficerAgent(app);
     const { bookingId } = await setupBookedLot(pool, {
       dailyInputs: { weighingMode: 'platform', secondsPerBag: 5, avgBagsPerLot: 20, weighbridgeAvgCycleMinutes: null },
     });
 
-    await request(app).post(`/api/lots/${bookingId}/checkin`).send({ token: TOKEN });
-    await request(app)
+    await agent.post(`/api/lots/${bookingId}/checkin`).send({ token: TOKEN });
+    await agent
       .post(`/api/lots/${bookingId}/quality`)
       .send({ meterId: 'MTR-01', calibrationDate: '2026-08-01', samples: [16.0, 16.0, 16.0] });
 
     const bagEntries = Array.from({ length: 10 }, () => ({ weightKg: 40 }));
-    const weigh = await request(app).post(`/api/lots/${bookingId}/weigh`).send({ bagEntries });
+    const weigh = await agent.post(`/api/lots/${bookingId}/weigh`).send({ bagEntries });
 
     expect(weigh.status).toBe(201);
     expect(weigh.body.mode).toBe('platform');
