@@ -75,6 +75,14 @@ function toApiInputs(row) {
 // unambiguous, separately-handled outcomes rather than relying on
 // RETURNING-on-a-blocked-conflict semantics.
 async function upsertDailyInputs(client, centreId, serviceDate, inputs, expectedUpdatedAt) {
+  // Generated here in JS, not via SQL now(), and reused for both branches
+  // below -- node-postgres round-trips a JS Date at millisecond precision,
+  // matching exactly what a client gets back from JSON (Date#toJSON is
+  // also millisecond-precision). SQL now() is microsecond-precision, so
+  // stamping with it here and later comparing against a client-echoed,
+  // JSON-truncated value would make updated_at = $3 below fail on every
+  // resubmit -- not just a genuine concurrent edit.
+  const now = new Date();
   if (expectedUpdatedAt) {
     const updateResult = await client.query(
       `UPDATE centre_daily_inputs SET
@@ -82,7 +90,7 @@ async function upsertDailyInputs(client, centreId, serviceDate, inputs, expected
          seconds_per_bag = $7, avg_bags_per_lot = $8, hamali_gang_count = $9, hamali_bags_per_gang_per_day = $10,
          bags_per_truck = $11, gunny_bags_available = $12, truck_evacuation_capacity = $13,
          yard_capacity_tonnes = $14, undispatched_tonnes = $15, avg_truck_load_tonnes = $16,
-         moisture_meter_count = $17, moisture_tests_per_meter_per_day = $18, updated_at = now()
+         moisture_meter_count = $17, moisture_tests_per_meter_per_day = $18, updated_at = $19
        WHERE centre_id = $1 AND service_date = $2 AND updated_at = $3
        RETURNING id, updated_at`,
       [
@@ -90,7 +98,7 @@ async function upsertDailyInputs(client, centreId, serviceDate, inputs, expected
         inputs.weighbridgeOperatingMinutes, inputs.weighbridgeAvgCycleMinutes, inputs.secondsPerBag, inputs.avgBagsPerLot,
         inputs.hamaliGangCount, inputs.hamaliBagsPerGangPerDay, inputs.bagsPerTruck, inputs.gunnyBagsAvailable,
         inputs.truckEvacuationCapacity, inputs.yardCapacityTonnes, inputs.undispatchedTonnes, inputs.avgTruckLoadTonnes,
-        inputs.moistureMeterCount, inputs.moistureTestsPerMeterPerDay,
+        inputs.moistureMeterCount, inputs.moistureTestsPerMeterPerDay, now,
       ]
     );
     if (updateResult.rowCount > 0) {
@@ -116,8 +124,8 @@ async function upsertDailyInputs(client, centreId, serviceDate, inputs, expected
        weighbridge_operating_minutes, weighbridge_avg_cycle_minutes, seconds_per_bag, avg_bags_per_lot,
        hamali_gang_count, hamali_bags_per_gang_per_day, bags_per_truck, gunny_bags_available,
        truck_evacuation_capacity, yard_capacity_tonnes, undispatched_tonnes, avg_truck_load_tonnes,
-       moisture_meter_count, moisture_tests_per_meter_per_day
-     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+       moisture_meter_count, moisture_tests_per_meter_per_day, updated_at
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
      ON CONFLICT (centre_id, service_date) DO UPDATE SET
        weighing_mode = EXCLUDED.weighing_mode,
        weighbridge_operating_minutes = EXCLUDED.weighbridge_operating_minutes,
@@ -134,14 +142,14 @@ async function upsertDailyInputs(client, centreId, serviceDate, inputs, expected
        avg_truck_load_tonnes = EXCLUDED.avg_truck_load_tonnes,
        moisture_meter_count = EXCLUDED.moisture_meter_count,
        moisture_tests_per_meter_per_day = EXCLUDED.moisture_tests_per_meter_per_day,
-       updated_at = now()
+       updated_at = EXCLUDED.updated_at
      RETURNING id, updated_at`,
     [
       crypto.randomUUID(), centreId, serviceDate, inputs.weighingMode,
       inputs.weighbridgeOperatingMinutes, inputs.weighbridgeAvgCycleMinutes, inputs.secondsPerBag, inputs.avgBagsPerLot,
       inputs.hamaliGangCount, inputs.hamaliBagsPerGangPerDay, inputs.bagsPerTruck, inputs.gunnyBagsAvailable,
       inputs.truckEvacuationCapacity, inputs.yardCapacityTonnes, inputs.undispatchedTonnes, inputs.avgTruckLoadTonnes,
-      inputs.moistureMeterCount, inputs.moistureTestsPerMeterPerDay,
+      inputs.moistureMeterCount, inputs.moistureTestsPerMeterPerDay, now,
     ]
   );
   return { id: result.rows[0].id, updatedAt: result.rows[0].updated_at, stale: false };
@@ -160,6 +168,32 @@ async function computeCentreDayCapacity(client, centreId, serviceDate) {
   const bagsCapacity = engineResult.bookableCapacity * bagsPerTruck;
 
   return { dailyInputRow, engineResult, bagsPerTruck, bagsCapacity };
+}
+
+// Bookable slots left right now for one centre/date, net of what's
+// already booked -- the same "remaining" a farmer would be quoted on
+// /centres/:id/availability, factored out so the farmer-facing centre
+// list (GET /centres?date=) can filter out centres with nothing left
+// without duplicating the bags-booked arithmetic. Returns null when the
+// centre has no declaration on file for that date at all (never 0 --
+// 0 means declared-but-full, a different situation from never declared).
+async function computeRemainingSlots(client, centreId, serviceDate) {
+  const capacity = await computeCentreDayCapacity(client, centreId, serviceDate);
+  if (!capacity) return null;
+
+  const existing = await client.query(
+    'SELECT bags_booked FROM centre_day WHERE centre_id = $1 AND service_date = $2',
+    [centreId, serviceDate]
+  );
+  const bagsBooked = existing.rows[0] ? Number(existing.rows[0].bags_booked) : 0;
+  const remainingBags = capacity.bagsCapacity - bagsBooked;
+  const remaining = Math.max(0, Math.floor(remainingBags / capacity.bagsPerTruck));
+
+  return {
+    totalCapacity: capacity.engineResult.totalCapacity,
+    bookableCapacity: capacity.engineResult.bookableCapacity,
+    remaining,
+  };
 }
 
 // Upserts the centre_day snapshot row so bookings have something to
@@ -204,6 +238,7 @@ module.exports = {
   toApiInputs,
   loadDailyInputs,
   computeCentreDayCapacity,
+  computeRemainingSlots,
   upsertCentreDay,
   upsertDailyInputs,
 };

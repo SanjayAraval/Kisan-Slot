@@ -102,7 +102,9 @@ const TRANSLATIONS = {
     quantityPlaceholder: 'e.g. 40',
     fieldCentre: 'Centre',
     noCentresNote: 'No centres available right now.',
+    noCentresCapacityNote: 'No centres have declared capacity for this date yet. Try a different date, or check back later.',
     fieldDate: 'Date',
+    bookingWindowNote: 'Booking opens {n} days in advance.',
     bookButton: 'Book slot',
     bookingEllipsis: 'Booking…',
     enterAllFields: 'Enter a quantity, centre, and date.',
@@ -205,7 +207,9 @@ const TRANSLATIONS = {
     quantityPlaceholder: 'जैसे 40',
     fieldCentre: 'केंद्र',
     noCentresNote: 'अभी कोई केंद्र उपलब्ध नहीं है।',
+    noCentresCapacityNote: 'इस तारीख के लिए अभी किसी भी केंद्र ने क्षमता घोषित नहीं की है। कोई अलग तारीख आज़माएँ, या बाद में देखें।',
     fieldDate: 'तारीख',
+    bookingWindowNote: 'बुकिंग {n} दिन पहले से खुलती है।',
     bookButton: 'स्लॉट बुक करें',
     bookingEllipsis: 'बुक हो रहा है…',
     enterAllFields: 'मात्रा, केंद्र और तारीख दर्ज करें।',
@@ -308,7 +312,9 @@ const TRANSLATIONS = {
     quantityPlaceholder: 'ఉదా. 40',
     fieldCentre: 'కేంద్రం',
     noCentresNote: 'ప్రస్తుతం కేంద్రాలు అందుబాటులో లేవు.',
+    noCentresCapacityNote: 'ఈ తేదీకి ఇంకా ఏ కేంద్రం సామర్థ్యాన్ని ప్రకటించలేదు. వేరే తేదీ ప్రయత్నించండి, లేదా తర్వాత మళ్లీ చూడండి.',
     fieldDate: 'తేదీ',
+    bookingWindowNote: 'బుకింగ్ {n} రోజుల ముందుగా తెరవబడుతుంది.',
     bookButton: 'స్లాట్ బుక్ చేయండి',
     bookingEllipsis: 'బుక్ అవుతోంది…',
     enterAllFields: 'పరిమాణం, కేంద్రం మరియు తేదీని నమోదు చేయండి.',
@@ -751,11 +757,11 @@ function classifyBookingErrors(errors) {
   return byField;
 }
 
-function BookScreen({ farmer, centres, onSwitchTab }) {
+function BookScreen({ farmer, onSwitchTab }) {
   const t = useT();
   const lang = useLang();
   const [quintals, setQuintals] = useState('');
-  const [centreId, setCentreId] = useState(centres[0] ? centres[0].id : '');
+  const [centreId, setCentreId] = useState('');
   const [date, setDate] = useState(todayPlusOne());
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState(null); // { httpStatus, body }
@@ -766,11 +772,48 @@ function BookScreen({ farmer, centres, onSwitchTab }) {
   // (booked, needs review, no capacity, already booked, ...).
   const [serverErrors, setServerErrors] = useState(null); // string[] | null
 
-  useEffect(() => {
-    if (!centreId && centres[0]) setCentreId(centres[0].id);
-  }, [centres]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Refetched per selected date, not just once on mount -- a centre with
+  // nothing declared (or nothing left) for one date may well have room on
+  // another, so the pick list has to track the date field, not just the
+  // farmer's session. `null` means "still loading this date's list";
+  // `[]` means the load finished and came back empty for real -- these
+  // render differently below (a spinner vs. an explained empty state).
+  const [dateCentres, setDateCentres] = useState(null);
 
-  const selectedCentre = useMemo(() => centres.find((c) => c.id === centreId) || null, [centres, centreId]);
+  useEffect(() => {
+    let cancelled = false;
+    setDateCentres(null);
+    if (!date) return undefined;
+    fetchJson(`/api/centres?date=${encodeURIComponent(date)}`)
+      .then(({ httpStatus, body }) => {
+        if (cancelled) return;
+        setDateCentres(httpStatus === 200 && Array.isArray(body) ? body : []);
+      })
+      .catch(() => { if (!cancelled) setDateCentres([]); });
+    return () => { cancelled = true; };
+  }, [date]);
+
+  // Only centres with at least one bookable slot left for this date --
+  // everything else would just 200 back NO_CAPACITY on submit, which is
+  // handled fine (see below) but there's no reason to offer a pick that's
+  // guaranteed to fail when the server already told us which ones aren't.
+  const availableCentres = useMemo(
+    () => (dateCentres || []).filter((c) => (c.remaining || 0) > 0),
+    [dateCentres]
+  );
+
+  // Keeps the selection valid as the date (and so the available list)
+  // changes -- drops to the first still-available centre, or to nothing
+  // if none are left, rather than silently submitting a stale centreId
+  // that's no longer in the list the farmer can see.
+  useEffect(() => {
+    if (dateCentres === null) return; // still loading -- don't thrash the selection yet
+    if (!availableCentres.some((c) => c.id === centreId)) {
+      setCentreId(availableCentres[0] ? availableCentres[0].id : '');
+    }
+  }, [availableCentres]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const selectedCentre = useMemo(() => availableCentres.find((c) => c.id === centreId) || null, [availableCentres, centreId]);
 
   // Field-level errors -- computed on every keystroke so a bad value is
   // flagged where it's typed, not only after the farmer hits "Book slot".
@@ -934,13 +977,19 @@ function BookScreen({ farmer, centres, onSwitchTab }) {
       ),
       h('div', { className: 'mb-4' },
         h(FieldLabel, { icon: 'fa-warehouse' }, t('fieldCentre')),
-        centres.length === 0
+        dateCentres === null
+          ? h('p', { className: 'text-sm text-kisan-ink/60 flex items-center gap-2 py-2' },
+              h('i', { className: 'fa-solid fa-circle-notch fa-spin' }), t('loadingEllipsis')
+            )
+          : dateCentres.length === 0
           ? h('div', { className: 'empty-state' }, h('span', { className: 'ic' }, '🏚️'), t('noCentresNote'))
+          : availableCentres.length === 0
+          ? h('div', { className: 'empty-state' }, h('span', { className: 'ic' }, '🗓️'), t('noCentresCapacityNote'))
           : h('select', {
               value: centreId, className: inputClass + (serverErrorsByField.centre.length ? ' border-kisan-red' : ''),
               onChange: (e) => setCentreId(e.target.value),
             },
-              centres.map((c) => h('option', { key: c.id, value: c.id }, `${centreDisplayName(c, lang)} (${c.code})`))
+              availableCentres.map((c) => h('option', { key: c.id, value: c.id }, `${centreDisplayName(c, lang)} (${c.code})`))
             ),
         serverErrorsByField.centre.map((e, i) => h('p', { key: i, className: 'field-error' }, e))
       ),
@@ -950,6 +999,7 @@ function BookScreen({ farmer, centres, onSwitchTab }) {
           type: 'date', value: date, min: today(), max: maxBookingDate(),
           className: inputClass + (dateError || serverErrorsByField.date.length ? ' border-kisan-red' : ''), onChange: (e) => setDate(e.target.value),
         }),
+        h('p', { className: 'text-xs text-kisan-ink/50 mt-1.5 mb-0' }, t('bookingWindowNote', { n: KisanValidation.BOOKING_MAX_DAYS_AHEAD })),
         dateError && h('p', { className: 'field-error' }, dateError),
         !dateError && serverErrorsByField.date.map((e, i) => h('p', { key: i, className: 'field-error' }, e))
       )
@@ -961,7 +1011,7 @@ function BookScreen({ farmer, centres, onSwitchTab }) {
     ),
     h(RainWarning, { centre: selectedCentre, date }),
     h(PrimaryButton, {
-      onClick: () => submit(), disabled: submitting || centres.length === 0 || !quintals || !!quintalsError || !!dateError, icon: 'fa-check-circle',
+      onClick: () => submit(), disabled: submitting || !centreId || !quintals || !!quintalsError || !!dateError, icon: 'fa-check-circle',
     }, submitting ? t('bookingEllipsis') : t('bookButton'))
   );
 }
@@ -969,6 +1019,10 @@ function BookScreen({ farmer, centres, onSwitchTab }) {
 // ---------------------------------------------------------------------------
 // STATUS
 // ---------------------------------------------------------------------------
+
+// Mirrors bookingService.hasActiveBookingOnDate's own definition of
+// "active" server-side.
+const ACTIVE_BOOKING_STATUSES = ['booked', 'checked_in'];
 
 function MoistureCard({ moisture }) {
   const t = useT();
@@ -1044,9 +1098,16 @@ function StatusScreen({ farmer, onSwitchTab }) {
   }
 
   const { booking, stages, moisture } = state.data;
+  // Same "active" definition the server itself uses to block a second
+  // booking on the same date (see bookingService.hasActiveBookingOnDate)
+  // -- once checked in at the gate the token has already done its job,
+  // but a farmer who booked today and is coming back tomorrow needs to
+  // be able to pull it back up here, not just on the confirmation screen
+  // they saw once at booking time.
+  const isActiveBooking = ACTIVE_BOOKING_STATUSES.includes(booking.status);
   return h('div', null,
+    isActiveBooking && h('div', { className: 'mb-4' }, h(QRTicket, { booking, farmer })),
     h(Card, null,
-      h(Row, { k: t('rowToken'), v: booking.token }),
       h(Row, {
         k: t('rowCentre'),
         v: `${centreDisplayName({ name: booking.centreName, nameHi: booking.centreNameHi, nameTe: booking.centreNameTe }, lang)} (${booking.centreCode})`,
@@ -1167,13 +1228,8 @@ function AppBody() {
   const session = useFarmerSession();
   const [farmer, setFarmer] = useState(null);
   const [farmerLoading, setFarmerLoading] = useState(false);
-  const [centres, setCentres] = useState([]);
   const [tab, setTab] = useState('book');
   const [error, setError] = useState(null);
-
-  useEffect(() => {
-    fetchJson('/api/centres').then(({ body }) => setCentres(Array.isArray(body) ? body : [])).catch((err) => setError(err.message));
-  }, []);
 
   useEffect(() => {
     if (!session.farmerId) return;
@@ -1238,7 +1294,7 @@ function AppBody() {
           tb.label
         ))
       ),
-      tab === 'book' && h(BookScreen, { farmer, centres, onSwitchTab: setTab }),
+      tab === 'book' && h(BookScreen, { farmer, onSwitchTab: setTab }),
       tab === 'status' && h(StatusScreen, { farmer, onSwitchTab: setTab }),
       tab === 'jform' && h(JFormScreen, { farmer, onSwitchTab: setTab })
     )

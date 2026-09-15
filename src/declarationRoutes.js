@@ -1,9 +1,9 @@
 'use strict';
 
 const express = require('express');
-const { toApiInputs, computeCentreDayCapacity, upsertCentreDay, upsertDailyInputs } = require('./capacityService');
+const { toApiInputs, computeCentreDayCapacity, computeRemainingSlots, upsertCentreDay, upsertDailyInputs } = require('./capacityService');
 const { RECOMMENDED_ACTIONS } = require('./constants');
-const { requireAuth, requireCentreScope } = require('./authMiddleware');
+const { requireAuth, requireCentreScope, requireCentreOfficerScope } = require('./authMiddleware');
 const { validatePositiveIntegerInBounds } = require('../public/validation');
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -70,8 +70,31 @@ function createDeclarationRoutes(pool) {
   const router = express.Router();
 
   router.get('/centres', async (req, res, next) => {
+    const { date } = req.query;
+    // date is optional and only meaningful to a caller that wants to know
+    // remaining bookable slots alongside each centre (the farmer booking
+    // screen, so it can hide a centre with nothing declared/left instead
+    // of offering a pick that's guaranteed to 200 back NO_CAPACITY) --
+    // every other caller (declaration screen's own centre picker,
+    // dashboard) omits it and gets the plain list, unfiltered, as before.
+    if (date !== undefined && !DATE_RE.test(date)) {
+      return res.status(400).json({ status: 'BAD_REQUEST', errors: ['date query param, if given, must be YYYY-MM-DD'] });
+    }
     try {
       const result = await pool.query('SELECT id, name, name_hi, name_te, code, centre_type, latitude, longitude FROM centres ORDER BY name');
+      let remainingByCentreId = null;
+      if (date) {
+        const client = await pool.connect();
+        try {
+          remainingByCentreId = new Map();
+          for (const r of result.rows) {
+            const remaining = await computeRemainingSlots(client, r.id, date);
+            remainingByCentreId.set(r.id, remaining ? remaining.remaining : 0);
+          }
+        } finally {
+          client.release();
+        }
+      }
       return res.status(200).json(
         result.rows.map((r) => ({
           id: r.id,
@@ -85,6 +108,7 @@ function createDeclarationRoutes(pool) {
           // centre instead of a hardcoded or district-average location.
           latitude: Number(r.latitude),
           longitude: Number(r.longitude),
+          ...(remainingByCentreId ? { remaining: remainingByCentreId.get(r.id) } : {}),
         }))
       );
     } catch (err) {
@@ -93,6 +117,9 @@ function createDeclarationRoutes(pool) {
   });
 
   const centreScope = requireCentreScope(pool, (req) => req.params.id);
+  // Read access stays at centreScope (district_officer included, for
+  // oversight); submission is stricter -- see requireCentreOfficerScope.
+  const centreOfficerScope = requireCentreOfficerScope((req) => req.params.id);
 
   router.get('/centres/:id/declaration', requireAuth, centreScope, async (req, res, next) => {
     const { date } = req.query;
@@ -113,7 +140,7 @@ function createDeclarationRoutes(pool) {
     }
   });
 
-  router.post('/centres/:id/declaration', requireAuth, centreScope, async (req, res, next) => {
+  router.post('/centres/:id/declaration', requireAuth, centreOfficerScope, async (req, res, next) => {
     const body = req.body || {};
     const errors = validateDeclarationBody(body);
     if (errors.length > 0) {

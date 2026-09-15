@@ -78,6 +78,29 @@ function requireCentreScope(pool, getCentreId) {
   };
 }
 
+// Stricter than requireCentreScope: for the one action that must come
+// from whoever is physically standing at the centre, not from district
+// oversight. Tonight's declaration (gunny stock on hand, hamali gangs
+// present, trucks on the yard) is an attestation of ground truth at one
+// specific centre -- a district_officer, however genuinely authorized
+// for that district, isn't there to see it and submitting on the
+// centre's behalf would decouple the declared capacity from what's
+// actually on the ground. district_officer keeps read access to the
+// same declaration (see requireCentreScope on the GET route) for
+// oversight; only the submit is restricted here.
+function requireCentreOfficerScope(getCentreId) {
+  return (req, res, next) => {
+    if (!req.user) return res.status(401).json({ status: 'UNAUTHENTICATED', message: 'login required' });
+    if (req.user.role !== 'centre_officer' || req.user.centreId !== getCentreId(req)) {
+      return res.status(403).json({
+        status: 'FORBIDDEN',
+        message: "only this centre's own officer may submit its declaration",
+      });
+    }
+    return next();
+  };
+}
+
 // Same idea as requireCentreScope, but for a route keyed by bookingId
 // instead of centreId -- looks up the booking's centre first (a missing
 // booking is left to the underlying handler's own 404, not turned into a
@@ -122,5 +145,6 @@ module.exports = {
   requireRole,
   requireFarmerSelfOrOfficer,
   requireCentreScope,
+  requireCentreOfficerScope,
   requireBookingCentreScope,
 };

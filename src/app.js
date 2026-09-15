@@ -4,7 +4,7 @@ const path = require('path');
 const express = require('express');
 const cookieParser = require('cookie-parser');
 const { attemptBooking, findAlternatives } = require('./bookingService');
-const { computeCentreDayCapacity } = require('./capacityService');
+const { computeCentreDayCapacity, computeRemainingSlots } = require('./capacityService');
 const { createLotRoutes } = require('./lotRoutes');
 const { createDeclarationRoutes } = require('./declarationRoutes');
 const { createDashboardRoutes } = require('./dashboardRoutes');
@@ -128,7 +128,7 @@ function createApp(pool, { now = todayInIST } = {}) {
     try {
       const client = await pool.connect();
       let capacity;
-      let bagsBooked;
+      let remaining;
       try {
         capacity = await computeCentreDayCapacity(client, centreId, date);
         if (!capacity) {
@@ -141,24 +141,21 @@ function createApp(pool, { now = todayInIST } = {}) {
             message: `No procurement capacity has been declared for this centre on ${date} yet -- try a different date.`,
           });
         }
-        const existing = await client.query(
-          'SELECT bags_booked FROM centre_day WHERE centre_id = $1 AND service_date = $2',
-          [centreId, date]
-        );
-        bagsBooked = existing.rows[0] ? Number(existing.rows[0].bags_booked) : 0;
+        // Re-derives the same capacity computeCentreDayCapacity just did --
+        // an extra query, but this endpoint isn't hot enough to warrant
+        // threading a pre-computed value through computeRemainingSlots's
+        // signature just to save it.
+        remaining = await computeRemainingSlots(client, centreId, date);
       } finally {
         client.release();
       }
-
-      const remainingBags = capacity.bagsCapacity - bagsBooked;
-      const remainingSlots = Math.floor(remainingBags / capacity.bagsPerTruck);
 
       return res.status(200).json({
         centreId,
         date,
         capacity: capacity.engineResult.totalCapacity,
         bookableSlots: capacity.engineResult.bookableCapacity,
-        remaining: Math.max(0, remainingSlots),
+        remaining: remaining.remaining,
         bindingConstraint: capacity.engineResult.bindingConstraint,
         constraints: capacity.engineResult.constraints,
       });

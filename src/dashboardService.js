@@ -195,9 +195,15 @@ async function releaseBags(client, centreId, date, additionalBags) {
   // exists to catch, so a declaration form loaded before this release
   // gets rejected as stale if resubmitted afterwards instead of silently
   // overwriting it.
+  //
+  // Stamped with a JS Date, not SQL now() -- see upsertDailyInputs's own
+  // comment: now() is microsecond-precision and would never equal a
+  // client-echoed, JSON-truncated (millisecond-precision) updated_at, so
+  // every resubmit after any release would be flagged stale even without
+  // a real conflict.
   await client.query(
-    'UPDATE centre_daily_inputs SET gunny_bags_available = gunny_bags_available + $1::int, updated_at = now() WHERE centre_id = $2 AND service_date = $3',
-    [additionalBags, centreId, date]
+    'UPDATE centre_daily_inputs SET gunny_bags_available = gunny_bags_available + $1::int, updated_at = $4 WHERE centre_id = $2 AND service_date = $3',
+    [additionalBags, centreId, date, new Date()]
   );
 
   const capacity = await computeCentreDayCapacity(client, centreId, date);

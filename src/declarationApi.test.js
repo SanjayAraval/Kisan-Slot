@@ -4,7 +4,7 @@ const request = require('supertest');
 const { createApp } = require('./app');
 const { createTestPool } = require('./testUtils/pgMemDb');
 const { insertCentre, insertDailyInputs, insertFarmerWithLand, DAILY_INPUT_BASELINE } = require('./testUtils/fixtures');
-const { districtOfficerAgent, farmerAgent } = require('./testUtils/authTestHelpers');
+const { districtOfficerAgent, centreOfficerAgent, farmerAgent } = require('./testUtils/authTestHelpers');
 
 const DATE = '2026-09-05';
 
@@ -65,6 +65,39 @@ describe('GET /api/centres', () => {
     expect(res.body[0].nameHi).toBe('मेडक एपीएमसी मंडी');
     expect(res.body[0].nameTe).toBe('మెదక్ ఏపీఎంసీ మండి');
   });
+
+  test('omits `remaining` when no date query param is given', async () => {
+    const { app, agent, pool } = setup();
+    await insertCentre(pool, { code: 'MDK-01' });
+
+    const res = await agent.get('/api/centres');
+    expect(res.status).toBe(200);
+    expect(res.body[0].remaining).toBeUndefined();
+  });
+
+  test('with a date, annotates each centre with remaining bookable slots for that date', async () => {
+    const { app, agent, pool } = setup();
+    const declaredCentreId = await insertCentre(pool, { code: 'MDK-01' });
+    const undeclaredCentreId = await insertCentre(pool, { code: 'MDK-02' });
+    const officer = centreOfficerAgent(app, declaredCentreId);
+    await officer.post(`/api/centres/${declaredCentreId}/declaration`).send(fullDeclarationBody());
+
+    const res = await agent.get('/api/centres').query({ date: DATE });
+    expect(res.status).toBe(200);
+    const byId = Object.fromEntries(res.body.map((c) => [c.id, c.remaining]));
+    expect(byId[declaredCentreId]).toBeGreaterThan(0);
+    // No declaration on file at all -- treated as zero remaining, not
+    // omitted or null, so the farmer screen can filter on a plain number.
+    expect(byId[undeclaredCentreId]).toBe(0);
+  });
+
+  test('400s on a malformed date query param', async () => {
+    const { app, agent, pool } = setup();
+    await insertCentre(pool);
+
+    const res = await agent.get('/api/centres').query({ date: 'not-a-date' });
+    expect(res.status).toBe(400);
+  });
 });
 
 describe('GET /api/centres/:id/declaration', () => {
@@ -100,8 +133,9 @@ describe('POST /api/centres/:id/declaration', () => {
   test('creates a first declaration and returns the recomputed capacity', async () => {
     const { app, agent, pool } = setup();
     const centreId = await insertCentre(pool);
+    const officer = centreOfficerAgent(app, centreId);
 
-    const res = await agent
+    const res = await officer
       .post(`/api/centres/${centreId}/declaration`)
       .send(fullDeclarationBody({ truckEvacuationCapacity: 20 })); // -> binds truckEvacuation
 
@@ -126,9 +160,10 @@ describe('POST /api/centres/:id/declaration', () => {
   test('a second declaration for the same date corrects the first (upsert, not a new row)', async () => {
     const { app, agent, pool } = setup();
     const centreId = await insertCentre(pool);
+    const officer = centreOfficerAgent(app, centreId);
 
-    await agent.post(`/api/centres/${centreId}/declaration`).send(fullDeclarationBody({ gunnyBagsAvailable: 1000 }));
-    const second = await agent
+    await officer.post(`/api/centres/${centreId}/declaration`).send(fullDeclarationBody({ gunnyBagsAvailable: 1000 }));
+    const second = await officer
       .post(`/api/centres/${centreId}/declaration`)
       .send(fullDeclarationBody({ gunnyBagsAvailable: 6000, truckEvacuationCapacity: 15 }));
 
@@ -145,8 +180,9 @@ describe('POST /api/centres/:id/declaration', () => {
   test('rejects an incomplete declaration with 400', async () => {
     const { app, agent, pool } = setup();
     const centreId = await insertCentre(pool);
+    const officer = centreOfficerAgent(app, centreId);
 
-    const res = await agent
+    const res = await officer
       .post(`/api/centres/${centreId}/declaration`)
       .send({ date: DATE, weighingMode: 'weighbridge' });
 
@@ -157,8 +193,9 @@ describe('POST /api/centres/:id/declaration', () => {
   test('platform mode requires secondsPerBag/avgBagsPerLot instead of a cycle time', async () => {
     const { app, agent, pool } = setup();
     const centreId = await insertCentre(pool);
+    const officer = centreOfficerAgent(app, centreId);
 
-    const res = await agent
+    const res = await officer
       .post(`/api/centres/${centreId}/declaration`)
       .send(fullDeclarationBody({ weighingMode: 'platform', weighbridgeAvgCycleMinutes: null }));
 
@@ -172,7 +209,8 @@ describe('POST /api/centres/:id/declaration', () => {
 
     // weighbridge=60, hamali=60, gunny=60, truckEvacuation=60, yardSpace=60,
     // moistureTesting=500 -- five-way tie at 60.
-    const res = await agent
+    const officer = centreOfficerAgent(app, centreId);
+    const res = await officer
       .post(`/api/centres/${centreId}/declaration`)
       .send(fullDeclarationBody());
 
@@ -184,10 +222,33 @@ describe('POST /api/centres/:id/declaration', () => {
     ]);
   });
 
+  test('a district officer may view a declaration but not submit one -- only that centre\'s own officer can', async () => {
+    const { app, agent, pool } = setup(); // agent: district officer for 'Medak'
+    const centreId = await insertCentre(pool); // district 'Medak' by default
+    const otherCentreId = await insertCentre(pool, { code: 'MDK-02' });
+    const officer = centreOfficerAgent(app, centreId);
+    const otherOfficer = centreOfficerAgent(app, otherCentreId);
+
+    const districtSubmit = await agent.post(`/api/centres/${centreId}/declaration`).send(fullDeclarationBody());
+    expect(districtSubmit.status).toBe(403);
+
+    const wrongCentreSubmit = await otherOfficer.post(`/api/centres/${centreId}/declaration`).send(fullDeclarationBody());
+    expect(wrongCentreSubmit.status).toBe(403);
+
+    const ownSubmit = await officer.post(`/api/centres/${centreId}/declaration`).send(fullDeclarationBody());
+    expect(ownSubmit.status).toBe(200);
+
+    // District officer retains read access for oversight.
+    const districtRead = await agent.get(`/api/centres/${centreId}/declaration`).query({ date: DATE });
+    expect(districtRead.status).toBe(200);
+  });
+
   test('404s for an unknown centre', async () => {
-    const { app, agent } = setup();
-    const res = await agent
-      .post('/api/centres/00000000-0000-0000-0000-000000000000/declaration')
+    const { app } = setup();
+    const unknownCentreId = '00000000-0000-0000-0000-000000000000';
+    const officer = centreOfficerAgent(app, unknownCentreId);
+    const res = await officer
+      .post(`/api/centres/${unknownCentreId}/declaration`)
       .send(fullDeclarationBody());
     expect(res.status).toBe(404);
   });
@@ -196,7 +257,8 @@ describe('POST /api/centres/:id/declaration', () => {
     test('after bags are released from the dashboard, the declaration screen shows the updated capacity', async () => {
       const { app, agent, pool } = setup();
       const centreId = await insertCentre(pool);
-      await agent.post(`/api/centres/${centreId}/declaration`).send(fullDeclarationBody({ gunnyBagsAvailable: 6000 }));
+      const officer = centreOfficerAgent(app, centreId);
+      await officer.post(`/api/centres/${centreId}/declaration`).send(fullDeclarationBody({ gunnyBagsAvailable: 6000 }));
 
       const release = await agent
         .post(`/api/dashboard/centres/${centreId}/release-bags`)
@@ -215,17 +277,18 @@ describe('POST /api/centres/:id/declaration', () => {
     test('resubmitting a form loaded before a release-bags change is rejected as stale, not silently applied', async () => {
       const { app, agent, pool } = setup();
       const centreId = await insertCentre(pool);
-      await agent.post(`/api/centres/${centreId}/declaration`).send(fullDeclarationBody({ gunnyBagsAvailable: 6000 }));
+      const officer = centreOfficerAgent(app, centreId);
+      await officer.post(`/api/centres/${centreId}/declaration`).send(fullDeclarationBody({ gunnyBagsAvailable: 6000 }));
 
       // The officer loads the form -- captures the version at this point.
-      const loaded = await agent.get(`/api/centres/${centreId}/declaration`).query({ date: DATE });
+      const loaded = await officer.get(`/api/centres/${centreId}/declaration`).query({ date: DATE });
       const staleVersion = loaded.body.inputs.updatedAt;
 
       // Meanwhile, bags are released from the dashboard.
       await agent.post(`/api/dashboard/centres/${centreId}/release-bags`).send({ date: DATE, additionalBags: 500 });
 
       // The officer's browser still has the old form open and submits it.
-      const resubmit = await agent
+      const resubmit = await officer
         .post(`/api/centres/${centreId}/declaration`)
         .send(fullDeclarationBody({ gunnyBagsAvailable: 6000, expectedUpdatedAt: staleVersion }));
 
@@ -241,12 +304,13 @@ describe('POST /api/centres/:id/declaration', () => {
     test('resubmitting with the current version succeeds normally', async () => {
       const { app, agent, pool } = setup();
       const centreId = await insertCentre(pool);
-      await agent.post(`/api/centres/${centreId}/declaration`).send(fullDeclarationBody({ gunnyBagsAvailable: 6000 }));
+      const officer = centreOfficerAgent(app, centreId);
+      await officer.post(`/api/centres/${centreId}/declaration`).send(fullDeclarationBody({ gunnyBagsAvailable: 6000 }));
 
-      const loaded = await agent.get(`/api/centres/${centreId}/declaration`).query({ date: DATE });
+      const loaded = await officer.get(`/api/centres/${centreId}/declaration`).query({ date: DATE });
       const currentVersion = loaded.body.inputs.updatedAt;
 
-      const resubmit = await agent
+      const resubmit = await officer
         .post(`/api/centres/${centreId}/declaration`)
         .send(fullDeclarationBody({ gunnyBagsAvailable: 7000, expectedUpdatedAt: currentVersion }));
 
@@ -258,8 +322,9 @@ describe('POST /api/centres/:id/declaration', () => {
     test('a first-ever declaration for a centre/date is unaffected by expectedUpdatedAt', async () => {
       const { app, agent, pool } = setup();
       const centreId = await insertCentre(pool);
+      const officer = centreOfficerAgent(app, centreId);
 
-      const res = await agent
+      const res = await officer
         .post(`/api/centres/${centreId}/declaration`)
         .send(fullDeclarationBody({ expectedUpdatedAt: '2020-01-01T00:00:00.000Z' }));
 
@@ -271,16 +336,17 @@ describe('POST /api/centres/:id/declaration', () => {
     test('rejects zero for gunny bags, hamali gangs and truck evacuation', async () => {
       const { app, agent, pool } = setup();
       const centreId = await insertCentre(pool);
+      const officer = centreOfficerAgent(app, centreId);
 
-      const bags = await agent.post(`/api/centres/${centreId}/declaration`).send(fullDeclarationBody({ gunnyBagsAvailable: 0 }));
+      const bags = await officer.post(`/api/centres/${centreId}/declaration`).send(fullDeclarationBody({ gunnyBagsAvailable: 0 }));
       expect(bags.status).toBe(400);
       expect(bags.body.errors.join(' ')).toMatch(/gunnyBagsAvailable/);
 
-      const gangs = await agent.post(`/api/centres/${centreId}/declaration`).send(fullDeclarationBody({ hamaliGangCount: 0 }));
+      const gangs = await officer.post(`/api/centres/${centreId}/declaration`).send(fullDeclarationBody({ hamaliGangCount: 0 }));
       expect(gangs.status).toBe(400);
       expect(gangs.body.errors.join(' ')).toMatch(/hamaliGangCount/);
 
-      const trucks = await agent.post(`/api/centres/${centreId}/declaration`).send(fullDeclarationBody({ truckEvacuationCapacity: 0 }));
+      const trucks = await officer.post(`/api/centres/${centreId}/declaration`).send(fullDeclarationBody({ truckEvacuationCapacity: 0 }));
       expect(trucks.status).toBe(400);
       expect(trucks.body.errors.join(' ')).toMatch(/truckEvacuationCapacity/);
     });
@@ -288,8 +354,9 @@ describe('POST /api/centres/:id/declaration', () => {
     test('rejects negative values', async () => {
       const { app, agent, pool } = setup();
       const centreId = await insertCentre(pool);
+      const officer = centreOfficerAgent(app, centreId);
 
-      const res = await agent
+      const res = await officer
         .post(`/api/centres/${centreId}/declaration`)
         .send(fullDeclarationBody({ hamaliGangCount: -3 }));
       expect(res.status).toBe(400);
@@ -298,8 +365,9 @@ describe('POST /api/centres/:id/declaration', () => {
     test('rejects fractional values', async () => {
       const { app, agent, pool } = setup();
       const centreId = await insertCentre(pool);
+      const officer = centreOfficerAgent(app, centreId);
 
-      const res = await agent
+      const res = await officer
         .post(`/api/centres/${centreId}/declaration`)
         .send(fullDeclarationBody({ gunnyBagsAvailable: 100.5 }));
       expect(res.status).toBe(400);
@@ -309,8 +377,9 @@ describe('POST /api/centres/:id/declaration', () => {
     test('rejects values above the plausible ceiling', async () => {
       const { app, agent, pool } = setup();
       const centreId = await insertCentre(pool);
+      const officer = centreOfficerAgent(app, centreId);
 
-      const res = await agent
+      const res = await officer
         .post(`/api/centres/${centreId}/declaration`)
         .send(fullDeclarationBody({ truckEvacuationCapacity: 5000 }));
       expect(res.status).toBe(400);

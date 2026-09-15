@@ -233,6 +233,19 @@ function App() {
     window.location.href = '/login.html';
   }
 
+  // Edits a single declared input and, critically, drops any previously
+  // computed result along with it -- `result` is a snapshot of what the
+  // server returned for whatever was last actually submitted, and once
+  // any field changes it no longer describes what's on screen (e.g. a
+  // stale "totalCapacity: 0, binding: gunny" from an earlier low gunny
+  // count staying visible after bumping the stepper to 510 would make
+  // the recomputed-capacity panel contradict the very field it's next
+  // to). Recomputing only happens by submitting again.
+  function updateInput(field, value) {
+    setInputs({ ...inputs, [field]: value });
+    setResult(null);
+  }
+
   async function loadDeclaration() {
     if (!centreId || !date) return;
     setLoading(true);
@@ -258,6 +271,13 @@ function App() {
   async function submitDeclaration() {
     setSubmitting(true);
     setError(null);
+    // Clears the "no declaration on file yet" banner from the load that
+    // got us here -- once a submit is in flight (successful or not) that
+    // banner no longer describes the current state, and leaving it up
+    // let it sit alongside a same-screen 409 CONFLICT error claiming the
+    // opposite: that a declaration *does* exist and was just changed by
+    // someone else.
+    setLoadMsg(null);
     try {
       // expectedUpdatedAt is whatever this form last loaded -- if the
       // dashboard released bags (or another officer declared) since
@@ -295,6 +315,11 @@ function App() {
   }
 
   const lockedCentre = session.role === 'centre_officer' ? centres.find((c) => c.id === centreId) : null;
+  // Tonight's declaration is an attestation of what's physically on hand
+  // at one centre -- only that centre's own officer can submit it (the
+  // server enforces this too; see requireCentreOfficerScope). A district
+  // officer can still load and read it here for oversight.
+  const isDistrictOfficer = session.role === 'district_officer';
 
   return h('div', null,
     h('h1', null, "Tonight's Declaration"),
@@ -341,6 +366,9 @@ function App() {
     inputs && h('fieldset', null,
       h('legend', null, "Tonight's inputs"),
       loadMsg && h('div', { className: 'callout', style: { marginBottom: 'var(--space-4)', fontSize: '0.88rem' } }, loadMsg),
+      isDistrictOfficer && h('div', { className: 'callout', style: { marginBottom: 'var(--space-4)', fontSize: '0.88rem' } },
+        "Read-only: you're viewing this for district oversight. Only this centre's own officer can submit its declaration."
+      ),
       h('div', { className: 'infra' },
         `Weighing mode: ${inputs.weighingMode}` +
         (inputs.weighingMode === 'weighbridge'
@@ -355,30 +383,30 @@ function App() {
           value: inputs.gunnyBagsAvailable,
           step: 50,
           max: GUNNY_BAGS_MAX,
-          disabled: submitting,
+          disabled: submitting || isDistrictOfficer,
           error: KisanValidation.validatePositiveIntegerInBounds(inputs.gunnyBagsAvailable, { max: GUNNY_BAGS_MAX, label: 'Gunny bags in stock' }),
-          onChange: (v) => setInputs({ ...inputs, gunnyBagsAvailable: v }),
+          onChange: (v) => updateInput('gunnyBagsAvailable', v),
         }),
         h(Stepper, {
           label: 'Hamali gangs available',
           value: inputs.hamaliGangCount,
           step: 1,
           max: HAMALI_GANG_MAX,
-          disabled: submitting,
+          disabled: submitting || isDistrictOfficer,
           error: KisanValidation.validatePositiveIntegerInBounds(inputs.hamaliGangCount, { max: HAMALI_GANG_MAX, label: 'Hamali gangs available' }),
-          onChange: (v) => setInputs({ ...inputs, hamaliGangCount: v }),
+          onChange: (v) => updateInput('hamaliGangCount', v),
         }),
         h(Stepper, {
           label: 'Trucks for evacuation',
           value: inputs.truckEvacuationCapacity,
           step: 1,
           max: TRUCK_EVACUATION_MAX,
-          disabled: submitting,
+          disabled: submitting || isDistrictOfficer,
           error: KisanValidation.validatePositiveIntegerInBounds(inputs.truckEvacuationCapacity, { max: TRUCK_EVACUATION_MAX, label: 'Trucks for evacuation' }),
-          onChange: (v) => setInputs({ ...inputs, truckEvacuationCapacity: v }),
+          onChange: (v) => updateInput('truckEvacuationCapacity', v),
         })
       ),
-      h('div', { className: 'actions' },
+      !isDistrictOfficer && h('div', { className: 'actions' },
         h('button', {
           className: 'btn btn-primary', onClick: submitDeclaration,
           disabled: submitting
