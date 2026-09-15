@@ -7,23 +7,22 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Mukta:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/theme.css">
 <script src="/validation.js"></script>
 <style>
-  :root{
-    --green:#1b5e3a; --green-dark:#123f28; --green-soft:#e7f1ea;
-    --gold:#c98a00; --gold-soft:#fcf2d9;
-    --ink:#1a2420; --muted:#5d6b64; --line:#dfe5e1;
-    --bg:#f5f7f4; --card:#ffffff;
-    --ok:#1b7a45; --ok-bg:#e6f4ec;
-    --wait:#9a6b00; --wait-bg:#fbf1d6;
-    --bad:#b23a2e; --bad-bg:#fbe8e6;
-    --radius:14px;
-  }
+  /* Phone-first, single column throughout; every tappable control meets
+     the 44px touch-target minimum (see theme.css --touch-min). Palette,
+     spacing scale and field-error styling all come from theme.css --
+     this file only adds the wizard-specific chrome (header, stepper,
+     card, OTP boxes, review list, result screen). No gradients, no
+     shadows -- flat fills and 1px borders throughout. */
+  :root{ --radius:14px; }
   *{box-sizing:border-box;margin:0;padding:0}
   body{
     font-family:'Mukta',system-ui,Arial,sans-serif;
-    background:var(--bg); color:var(--ink);
+    background:var(--paper); color:var(--ink);
     line-height:1.5; -webkit-font-smoothing:antialiased;
+    font-size:17px;
   }
   .wrap{max-width:640px;margin:0 auto;padding:0 16px 64px}
 
@@ -32,7 +31,6 @@
     background:var(--green); color:#fff;
     border-radius:0 0 20px 20px;
     padding:18px 18px 22px;
-    box-shadow:0 6px 20px rgba(18,63,40,.18);
   }
   .header-inner{max-width:640px;margin:0 auto}
   .brandrow{display:flex;align-items:center;justify-content:space-between;gap:12px}
@@ -52,7 +50,7 @@
     font-family:inherit;font-weight:700;font-size:.8rem;
     padding:6px 12px;border-radius:999px;transition:background .15s;
   }
-  .lang button.on{background:#fff;color:var(--green-dark)}
+  .lang button.on{background:#fff;color:var(--green-ink)}
 
   .assist-toggle{
     margin-top:16px;display:flex;align-items:center;gap:10px;
@@ -83,58 +81,58 @@
   }
   .step{position:relative;z-index:2;text-align:center;width:20%}
   .step .dot{
-    width:36px;height:36px;border-radius:50%;margin:0 auto 5px;
-    background:#fff;border:3px solid var(--line);color:var(--muted);
+    width:44px;height:44px;border-radius:50%;margin:0 auto 5px;
+    background:#fff;border:3px solid var(--line);color:var(--ink-60);
     display:grid;place-items:center;font-weight:800;font-size:.95rem;transition:.2s;
   }
   .step.done .dot{background:var(--green);border-color:var(--green);color:#fff}
-  .step.active .dot{background:#fff;border-color:var(--gold);color:var(--green-dark);
-    box-shadow:0 0 0 4px var(--gold-soft)}
-  .step small{font-size:.68rem;color:var(--muted);font-weight:600;display:block;line-height:1.1}
-  .step.active small{color:var(--green-dark)}
+  .step.active .dot{background:#fff;border-color:var(--gold);color:var(--green-ink);
+    outline:3px solid var(--gold-bg);outline-offset:2px}
+  .step small{font-size:.68rem;color:var(--ink-60);font-weight:600;display:block;line-height:1.1}
+  .step.active small{color:var(--green-ink)}
 
   /* Card */
   .card{
-    background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
-    padding:22px;margin-top:22px;box-shadow:0 2px 10px rgba(20,40,30,.04);
+    background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+    padding:22px;margin-top:22px;
   }
   .card-head{display:flex;align-items:center;gap:13px;margin-bottom:6px}
   .card-head .ic{
-    width:44px;height:44px;flex:none;border-radius:12px;background:var(--green-soft);
+    width:44px;height:44px;flex:none;border-radius:12px;background:var(--green-bg);
     display:grid;place-items:center;font-size:23px;
   }
-  .card-head h2{font-size:1.24rem;font-weight:700;color:var(--green-dark)}
-  .card-head p{font-size:.84rem;color:var(--muted);font-weight:500}
+  .card-head h2{font-size:1.24rem;font-weight:700;color:var(--green-ink)}
+  .card-head p{font-size:.84rem;color:var(--ink-60);font-weight:500}
   .assist-banner{
-    display:none;align-items:center;gap:8px;background:var(--gold-soft);
-    color:#7a5600;border:1px solid #e6d49a;border-radius:10px;
+    display:none;align-items:center;gap:8px;background:var(--ink-06);
+    color:var(--ink-60);border:1px solid var(--line);border-radius:10px;
     padding:8px 12px;font-size:.8rem;font-weight:600;margin:14px 0 4px;
   }
   body.assist .assist-banner{display:flex}
 
-  label{display:block;font-weight:600;font-size:.9rem;margin:16px 0 6px}
-  .req{color:var(--bad)}
+  label{font-size:.9rem;margin:16px 0 6px}
   input,select{
-    width:100%;font-family:inherit;font-size:1rem;color:var(--ink);
-    padding:13px 14px;border:1.5px solid var(--line);border-radius:11px;background:#fff;
-    transition:border-color .15s,box-shadow .15s;
+    font-size:1rem;padding:13px 14px;border:1.5px solid var(--line);border-radius:11px;
+    min-height:44px;transition:border-color .15s,outline-color .15s;
   }
-  input:focus,select:focus{outline:none;border-color:var(--green);box-shadow:0 0 0 3px var(--green-soft)}
-  input.err{border-color:var(--bad);box-shadow:0 0 0 3px var(--bad-bg)}
-  .hint{font-size:.76rem;color:var(--muted);margin-top:5px}
-  .errmsg{font-size:.78rem;color:var(--bad);font-weight:600;margin-top:5px;display:none}
+  .hint{font-size:.76rem;color:var(--ink-60);margin-top:5px}
+  /* This page toggles the .err class on the <input> itself (see setErr()
+     in the script below) and relies on this sibling selector to reveal
+     the matching message -- theme.css's own .field-error is for pages
+     that render the message conditionally from JS instead. */
+  .errmsg{font-size:.78rem;color:var(--red);font-weight:600;margin-top:5px;display:none}
   input.err ~ .errmsg{display:block}
   .row2{display:flex;gap:12px}
   .row2>div{flex:1}
 
   .btn{
-    font-family:inherit;font-weight:700;font-size:1rem;cursor:pointer;border:0;
+    font-family:inherit;font-weight:700;font-size:1rem;cursor:pointer;
     padding:14px 20px;border-radius:12px;transition:transform .06s,background .15s;
+    min-height:48px;
   }
   .btn:active{transform:translateY(1px)}
-  .btn-primary{background:var(--green);color:#fff;width:100%}
-  .btn-primary:hover{background:var(--green-dark)}
-  .btn-ghost{background:#fff;color:var(--green-dark);border:1.5px solid var(--line)}
+  .btn-primary{width:100%}
+  .btn-ghost{background:#fff;color:var(--green-ink);border:1.5px solid var(--line)}
   .btn-ghost:hover{border-color:var(--green)}
   .actions{display:flex;gap:12px;margin-top:24px}
   .actions .btn-ghost{flex:none;padding-left:22px;padding-right:22px}
@@ -142,11 +140,11 @@
 
   /* OTP */
   .otp-sent{
-    display:none;background:var(--green-soft);border:1px solid #c3ddcd;border-radius:11px;
+    display:none;background:var(--green-bg);border:1px solid var(--green-border);border-radius:11px;
     padding:12px 14px;margin-top:14px;font-size:.86rem;
   }
   .otp-sent.show{display:block}
-  .otp-sent b{color:var(--green-dark)}
+  .otp-sent b{color:var(--green-ink)}
   .otp-inputs{display:flex;gap:9px;margin-top:12px}
   .otp-inputs input{text-align:center;font-size:1.3rem;font-weight:700;padding:12px 0;letter-spacing:1px}
 
@@ -154,8 +152,8 @@
   .review-list{border:1px solid var(--line);border-radius:12px;overflow:hidden;margin-top:6px}
   .review-list .r{display:flex;justify-content:space-between;gap:14px;padding:12px 15px;border-bottom:1px solid var(--line)}
   .review-list .r:last-child{border-bottom:0}
-  .review-list .r:nth-child(odd){background:#fafbf9}
-  .review-list .k{color:var(--muted);font-size:.86rem;font-weight:600}
+  .review-list .r:nth-child(odd){background:var(--ink-06)}
+  .review-list .k{color:var(--ink-60);font-size:.86rem;font-weight:600}
   .review-list .v{font-weight:700;font-size:.92rem;text-align:right;word-break:break-word}
 
   /* Verify result / success */
@@ -163,16 +161,16 @@
   .result .badge{
     width:76px;height:76px;border-radius:50%;margin:6px auto 14px;display:grid;place-items:center;font-size:38px;
   }
-  .b-ok{background:var(--ok-bg);color:var(--ok)}
-  .b-wait{background:var(--wait-bg);color:var(--wait)}
+  .b-ok{background:var(--green-bg);color:var(--green-ink)}
+  .b-wait{background:var(--amber-bg);color:var(--amber-ink)}
   .result h2{font-size:1.4rem;margin-bottom:6px}
   .result .status-line{font-weight:700;font-size:.95rem;padding:6px 14px;border-radius:999px;display:inline-block;margin-bottom:12px}
-  .s-ok{background:var(--ok-bg);color:var(--ok)}
-  .s-wait{background:var(--wait-bg);color:var(--wait)}
-  .result p{color:var(--muted);font-size:.9rem;max-width:440px;margin:0 auto 6px}
+  .s-ok{background:var(--green-bg);color:var(--green-ink)}
+  .s-wait{background:var(--amber-bg);color:var(--amber-ink)}
+  .result p{color:var(--ink-60);font-size:.9rem;max-width:440px;margin:0 auto 6px}
 
   .idcard{
-    background:linear-gradient(135deg,var(--green),var(--green-dark));color:#fff;
+    background:var(--green);color:#fff;
     border-radius:16px;padding:20px;margin:20px 0 8px;text-align:left;position:relative;overflow:hidden;
   }
   .idcard::after{content:"🌾";position:absolute;right:-6px;bottom:-14px;font-size:88px;opacity:.13}
@@ -184,15 +182,15 @@
   .checklist{text-align:left;margin:18px auto 0;max-width:440px}
   .checklist .ci{display:flex;align-items:center;gap:10px;padding:8px 0;font-size:.9rem;font-weight:600}
   .checklist .ci .m{width:26px;height:26px;border-radius:50%;flex:none;display:grid;place-items:center;font-size:.85rem;font-weight:800}
-  .m-ok{background:var(--ok-bg);color:var(--ok)}
-  .m-wait{background:var(--wait-bg);color:var(--wait)}
+  .m-ok{background:var(--green-bg);color:var(--green-ink)}
+  .m-wait{background:var(--amber-bg);color:var(--amber-ink)}
 
-  .footnote{text-align:center;font-size:.74rem;color:var(--muted);margin-top:26px;line-height:1.5}
+  .footnote{text-align:center;font-size:.74rem;color:var(--ink-60);margin-top:26px;line-height:1.5}
 
   .khasra-match{border-radius:11px;padding:11px 13px;margin-top:10px;font-size:.86rem}
-  .khasra-match.found{background:var(--ok-bg);border:1px solid #b9ddc7;color:#0f4a29}
-  .khasra-match.tenant{background:var(--wait-bg);border:1px solid #ecd58f;color:#6b4c00}
-  .khasra-match.missing{background:#f1f2ef;border:1px solid var(--line);color:var(--muted)}
+  .khasra-match.found{background:var(--green-bg);border:1px solid var(--green-border);color:var(--green-ink)}
+  .khasra-match.tenant{background:var(--amber-bg);border:1px solid var(--amber-border);color:var(--amber-ink)}
+  .khasra-match.missing{background:var(--ink-06);border:1px solid var(--line);color:var(--ink-60)}
   .khasra-match .title{font-weight:700;margin-bottom:2px}
 
   .session-badge{
@@ -430,6 +428,7 @@ const T = {
     khasraFound:"Match found: {name}, {village} -- {acres} ac",
     khasraTenant:"Registered under a different name ({name}) -- you'll be marked as a tenant cultivator pending officer review.",
     khasraMissing:"No matching land record. You can still continue -- an officer will verify this manually.",
+    khasraChecking:"Checking land records…",
     t2:"Identity details",d2:"As per your Aadhaar",
     l_name:"Full name",e_name:"Name is required",
     l_aadhaar:"Aadhaar number",h_aadhaar:"In production this is verified by UIDAI eKYC / biometric",
@@ -485,6 +484,7 @@ const T = {
     khasraFound:"मिलान मिला: {name}, {village} -- {acres} एकड़",
     khasraTenant:"अलग नाम ({name}) से पंजीकृत -- आपको बटाईदार के रूप में चिह्नित किया जाएगा, अधिकारी समीक्षा लंबित।",
     khasraMissing:"कोई मिलता भूमि रिकॉर्ड नहीं मिला। आप आगे बढ़ सकते हैं -- एक अधिकारी इसे मैन्युअल रूप से सत्यापित करेगा।",
+    khasraChecking:"भूमि रिकॉर्ड जाँचे जा रहे हैं…",
     t2:"पहचान विवरण",d2:"आपके आधार के अनुसार",
     l_name:"पूरा नाम",e_name:"नाम आवश्यक है",
     l_aadhaar:"आधार नंबर",h_aadhaar:"उत्पादन में यह UIDAI eKYC / बायोमेट्रिक से सत्यापित होता है",
@@ -638,10 +638,13 @@ async function sendOrVerifyOtp(){
   if(!otpStage){
     if(KisanValidation.validateMobile(m.value)){setErr('mobile',true);return}
     setErr('mobile',false);
+    const sendLabel=btn.textContent;
     btn.disabled=true;
+    btn.textContent='…';
     const mobile=KisanValidation.normalizeMobile(m.value);
     const { httpStatus, body } = await postJson('/api/auth/request-otp', { mobile, purpose:'registration' });
     btn.disabled=false;
+    btn.textContent=sendLabel;
     if(httpStatus===409){
       document.getElementById('otpErr').textContent=t('e_mobileTaken');
       document.getElementById('otpErr').style.display='block';
@@ -664,10 +667,13 @@ async function sendOrVerifyOtp(){
     document.querySelector('.otp-inputs input').focus();
   }else{
     const code=[...document.querySelectorAll('.otp-inputs input')].map(i=>i.value).join('');
+    const verifyLabel=btn.textContent;
     btn.disabled=true;
+    btn.textContent='…';
     const mobile=KisanValidation.normalizeMobile(m.value);
     const { httpStatus, body } = await postJson('/api/auth/verify-otp', { mobile, code, purpose:'registration' });
     btn.disabled=false;
+    btn.textContent=verifyLabel;
     if(httpStatus!==200){
       document.getElementById('otpErr').textContent=body.message||t('e_otp');
       document.getElementById('otpErr').style.display='block';
@@ -684,6 +690,9 @@ async function lookupKhasra(){
   const box=document.getElementById('khasraMatch');
   khasraMatch=null;
   if(!number){ box.className='khasra-match hide'; return; }
+
+  box.className='khasra-match missing';
+  box.textContent=t('khasraChecking');
 
   let record=null;
   try{

@@ -5,35 +5,34 @@
 <title>Tonight's Declaration</title>
 <link rel="stylesheet" href="/theme.css" />
 <style>
-  body { max-width: 640px; margin: 2rem auto; padding: 0 1rem; }
-  h1 { font-size: 1.3rem; margin-bottom: 0.25rem; }
-  .sub { color: var(--ink-60); margin-top: 0; margin-bottom: 1.5rem; font-size: 0.9rem; }
-  fieldset { border: 1px solid var(--ink-10); border-radius: var(--radius); padding: 1rem; margin-bottom: 1rem; }
-  legend { padding: 0 0.4rem; font-weight: 600; }
-  label { display: block; font-size: 0.85rem; color: var(--ink-60); margin-bottom: 0.2rem; }
-  select, input[type="date"] { padding: 0.4rem; font-size: 1rem; width: 100%; box-sizing: border-box; border: 1px solid var(--ink-16); border-radius: 6px; background: var(--paper-raised); color: var(--ink); }
-  .row { display: flex; gap: 1rem; margin-bottom: 0.75rem; }
-  .row > div { flex: 1; }
-  .field { margin-bottom: 0.9rem; }
-  .stepper { display: flex; align-items: center; gap: 0.5rem; }
-  .stepper button { width: 2.2rem; height: 2.2rem; font-size: 1.2rem; cursor: pointer; border: 1px solid var(--ink-16); background: var(--ink-06); border-radius: 6px; color: var(--ink); }
+  body { max-width: 760px; margin: 0 auto; padding: var(--space-5) var(--space-4) var(--space-8); }
+  h1 { font-size: 1.3rem; }
+  .sub { color: var(--ink-60); margin-bottom: var(--space-5); font-size: 0.9rem; }
+  fieldset { border: 1px solid var(--line); border-radius: var(--radius); padding: var(--space-4); margin: 0 0 var(--space-4); }
+  legend { padding: 0 var(--space-2); font-weight: 700; font-size: 0.95rem; }
+  /* Tablet target: .field-grid-2 (theme.css) stacks fields one-per-row
+     on a phone and goes two-up from 768px. */
+  .field-grid-2 .field, .field-grid-2 > div { margin-bottom: 0; }
+
+  .stepper { display: flex; align-items: center; gap: var(--space-2); }
+  .stepper button {
+    width: 44px; height: 44px; font-size: 1.2rem; cursor: pointer; flex: none;
+    border: 1px solid var(--line); background: var(--ink-06); border-radius: var(--radius-sm); color: var(--ink);
+  }
   .stepper button:hover { background: var(--ink-10); }
-  .stepper input { width: 6rem; text-align: center; font-size: 1rem; padding: 0.4rem; border: 1px solid var(--ink-16); border-radius: 6px; }
-  .actions { display: flex; gap: 0.6rem; margin-top: 1rem; }
-  .infra { font-size: 0.85rem; color: var(--ink-60); background: var(--ink-06); border-radius: 6px; padding: 0.6rem 0.8rem; margin-bottom: 1rem; }
-  .msg { padding: 0.6rem 0.8rem; border-radius: 6px; margin-bottom: 1rem; font-size: 0.9rem; }
-  .msg.error { background: var(--red-bg); color: var(--red); border: 1px solid var(--red-border); }
-  .msg.info { background: var(--gold-bg); color: var(--gold-ink); border: 1px solid var(--gold-border); }
-  .result h2 { font-size: 1.1rem; margin-bottom: 0.5rem; }
-  .stat-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.6rem; margin-bottom: 1rem; }
-  .stat { background: var(--ink-06); border-radius: 6px; padding: 0.6rem 0.8rem; }
+  .stepper button:disabled { opacity: 0.5; cursor: default; }
+  .stepper input { width: 6.5rem; text-align: center; min-height: 44px; }
+  .actions { display: flex; gap: var(--space-3); margin-top: var(--space-4); flex-wrap: wrap; }
+  .infra { font-size: 0.85rem; color: var(--ink-60); background: var(--ink-06); border-radius: var(--radius-sm); padding: var(--space-3); margin-bottom: var(--space-4); }
+  .result h2 { font-size: 1.1rem; }
+  .stat-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--space-3); margin-bottom: var(--space-4); }
+  @media (min-width: 768px) { .stat-grid { grid-template-columns: repeat(4, 1fr); } }
+  .stat { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: var(--space-3); }
   .stat .n { font-size: 1.4rem; font-weight: 700; }
   .stat .l { font-size: 0.78rem; color: var(--ink-60); }
-  .action { background: var(--gold-bg); border: 1px solid var(--gold-border); border-radius: 6px; padding: 0.7rem 0.9rem; font-size: 0.92rem; color: var(--gold-ink); }
-  table.breakdown { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin-top: 0.75rem; }
-  table.breakdown td, table.breakdown th { padding: 0.3rem 0.5rem; border-bottom: 1px solid var(--ink-10); text-align: left; }
-  tr.binding { background: var(--gold-bg); font-weight: 600; }
-  .link-btn { background: none; border: none; color: var(--green); font-weight: 600; cursor: pointer; padding: 0; text-decoration: underline; }
+  tr.binding td { color: var(--red-ink); font-weight: 700; }
+  tr.binding { background: var(--red-bg); }
+  .link-btn { background: none; border: none; color: var(--green); font-weight: 600; cursor: pointer; padding: 0; text-decoration: underline; min-height: auto; }
 </style>
 </head>
 <body>
@@ -114,30 +113,39 @@ async function fetchJson(url, options) {
   return { status: res.status, body };
 }
 
-function Stepper({ label, value, onChange, step, hint, min = 1, max, error }) {
+function Stepper({ label, value, onChange, step, hint, min = 1, max, error, disabled }) {
   return h('div', { className: 'field' },
     h('label', null, label + (hint ? ` (${hint})` : '')),
     h('div', { className: 'stepper' },
-      h('button', { type: 'button', onClick: () => onChange(Math.max(min, value - step)) }, '−'),
+      h('button', {
+        type: 'button', disabled, 'aria-label': `Decrease ${label}`,
+        onClick: () => onChange(Math.max(min, value - step)),
+      }, '−'),
       h('input', {
         type: 'number',
+        className: error ? 'err num' : 'num',
         value: value,
         min: min,
         max: max,
+        disabled,
+        'aria-invalid': !!error,
         onChange: (e) => {
           const n = Number(e.target.value);
           onChange(Number.isFinite(n) ? n : min);
         },
       }),
-      h('button', { type: 'button', onClick: () => onChange(max != null ? Math.min(max, value + step) : value + step) }, '+')
+      h('button', {
+        type: 'button', disabled, 'aria-label': `Increase ${label}`,
+        onClick: () => onChange(max != null ? Math.min(max, value + step) : value + step),
+      }, '+')
     ),
-    error && h('div', { className: 'msg error', style: { marginTop: '0.4rem', marginBottom: 0, padding: '0.3rem 0.6rem' } }, error)
+    error && h('div', { className: 'field-error' }, error)
   );
 }
 
 function StatCard(props) {
   return h('div', { className: 'stat' },
-    h('div', { className: 'n' }, props.value),
+    h('div', { className: 'n num' }, props.value),
     h('div', { className: 'l' }, props.label)
   );
 }
@@ -157,26 +165,27 @@ function ResultPanel({ result }) {
       h(StatCard, { value: result.walkInReserved, label: 'Walk-in reserve' }),
       h(StatCard, { value: label, label: tied.length > 1 ? 'Binding constraints (tied)' : 'Binding constraint' })
     ),
-    result.recommendedAction && h('div', { className: 'action' },
+    result.recommendedAction && h('div', { className: 'callout callout-warning', style: { fontSize: '0.92rem', marginBottom: 'var(--space-4)' } },
       h('strong', null, 'Recommended action: '), result.recommendedAction
     ),
-    h('table', { className: 'breakdown' },
+    h('div', { className: 'table-scroll' }, h('table', null,
       h('thead', null, h('tr', null, h('th', null, 'Constraint'), h('th', null, 'Lots/day it supports'))),
       h('tbody', null,
         Object.entries(result.constraints).map(([key, val]) =>
           h('tr', { key: key, className: tied.includes(key) ? 'binding' : '' },
             h('td', null, CONSTRAINT_LABELS[key] || key),
-            h('td', null, val)
+            h('td', { className: 'num' }, val)
           )
         )
       )
-    )
+    ))
   );
 }
 
 function App() {
   const [session, setSession] = React.useState({ loading: true, role: null, centreId: null, name: null });
   const [centres, setCentres] = React.useState([]);
+  const [centresLoading, setCentresLoading] = React.useState(true);
   const [centreId, setCentreId] = React.useState('');
   const [date, setDate] = React.useState(todayPlusOne());
   const [inputs, setInputs] = React.useState(null);
@@ -202,6 +211,7 @@ function App() {
 
   React.useEffect(() => {
     if (session.loading) return;
+    setCentresLoading(true);
     fetchJson('/api/centres')
       .then(({ body }) => {
         setCentres(body);
@@ -214,7 +224,8 @@ function App() {
           setCentreId(body[0].id);
         }
       })
-      .catch((err) => setError(err.message));
+      .catch((err) => setError(err.message))
+      .finally(() => setCentresLoading(false));
   }, [session.loading]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function logout() {
@@ -252,11 +263,20 @@ function App() {
       // dashboard released bags (or another officer declared) since
       // then, the server rejects this as stale instead of silently
       // overwriting that change.
-      const { body } = await fetchJson(`/api/centres/${centreId}/declaration`, {
+      const { status, body } = await fetchJson(`/api/centres/${centreId}/declaration`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...inputs, date, expectedUpdatedAt: inputs.updatedAt || null }),
       });
+      // fetchJson only special-cases 404 as "not an error" for the GET
+      // declaration lookup (no declaration on file yet is expected
+      // there) -- for a submit, 404 means the centre itself is gone,
+      // which is a real failure and must not be rendered as if it were
+      // a successful recomputed-capacity result.
+      if (status !== 200) {
+        setError(body.message || (body.errors || []).join(', ') || 'Something went wrong. Please try again.');
+        return;
+      }
       setResult(body);
       // Carry the new version forward so a second submit in the same
       // session (without reloading) isn't rejected against itself.
@@ -269,7 +289,9 @@ function App() {
   }
 
   if (session.loading) {
-    return h('div', null, h('p', { className: 'sub' }, 'Checking your session…'));
+    return h('div', { className: 'loading-row', style: { padding: 'var(--space-5) var(--space-4)' } },
+      h('span', { className: 'spinner' }), 'Checking your session…'
+    );
   }
 
   const lockedCentre = session.role === 'centre_officer' ? centres.find((c) => c.id === centreId) : null;
@@ -280,40 +302,45 @@ function App() {
     // The dashboard is district_officer-only -- a centre_officer here
     // would only ever hit its own redirect back to login. The farmer
     // screen isn't linked at all: no officer role can use it.
-    session.role === 'district_officer' && h('p', { style: { fontSize: '0.85rem', marginTop: '-0.75rem', marginBottom: '0.4rem' } },
-      h('a', { href: '/dashboard.html', style: { color: 'var(--green)' } }, 'District officer dashboard →')
+    session.role === 'district_officer' && h('p', { style: { fontSize: '0.85rem', marginTop: '-0.75rem', marginBottom: 'var(--space-2)' } },
+      h('a', { href: '/dashboard.html' }, 'District officer dashboard →')
     ),
-    h('p', { style: { fontSize: '0.8rem', color: 'var(--ink-60)', marginTop: 0, marginBottom: '1rem' } },
+    h('p', { style: { fontSize: '0.8rem', color: 'var(--ink-60)', marginTop: 0, marginBottom: 'var(--space-4)' } },
       `Logged in as ${session.name} (${session.role.replace('_', ' ')})`, ' · ',
       h('button', { className: 'link-btn', onClick: logout }, 'Log out')
     ),
 
-    error && h('div', { className: 'msg error' }, error),
+    error && h('div', { className: 'callout callout-danger', style: { marginBottom: 'var(--space-4)' } }, error),
 
     h('fieldset', null,
       h('legend', null, 'Centre & date'),
-      h('div', { className: 'row' },
-        h('div', null,
+      h('div', { className: 'field-grid field-grid-2' },
+        h('div', { className: 'field' },
           h('label', null, 'Centre'),
-          lockedCentre
-            ? h('div', { style: { padding: '0.4rem 0', fontWeight: 700 } }, `${lockedCentre.name} (${lockedCentre.code})`)
+          centresLoading
+            ? h('div', { className: 'loading-row', style: { padding: '0.6rem 0' } }, h('span', { className: 'spinner' }), 'Loading centres…')
+            : centres.length === 0
+            ? h('div', { className: 'field-hint' }, 'No centres found.')
+            : lockedCentre
+            ? h('div', { style: { padding: '0.65rem 0', fontWeight: 700 } }, `${lockedCentre.name} (${lockedCentre.code})`)
             : h('select', { value: centreId, onChange: (e) => setCentreId(e.target.value) },
                 centres.map((c) => h('option', { key: c.id, value: c.id }, `${c.name} (${c.code})`))
               )
         ),
-        h('div', null,
+        h('div', { className: 'field' },
           h('label', null, 'Date'),
           h('input', { type: 'date', value: date, min: today(), onChange: (e) => setDate(e.target.value) })
         )
       ),
-      h('button', { className: 'btn btn-secondary', onClick: loadDeclaration, disabled: loading || !centreId || !date },
+      h('button', { className: 'btn btn-secondary btn-sm', onClick: loadDeclaration, disabled: loading || !centreId || !date },
+        loading && h('span', { className: 'spinner' }),
         loading ? 'Loading…' : 'Load declaration'
       )
     ),
 
     inputs && h('fieldset', null,
       h('legend', null, "Tonight's inputs"),
-      loadMsg && h('div', { className: 'msg info' }, loadMsg),
+      loadMsg && h('div', { className: 'callout', style: { marginBottom: 'var(--space-4)', fontSize: '0.88rem' } }, loadMsg),
       h('div', { className: 'infra' },
         `Weighing mode: ${inputs.weighingMode}` +
         (inputs.weighingMode === 'weighbridge'
@@ -322,30 +349,35 @@ function App() {
         ` • ${inputs.bagsPerTruck} bags/truck • yard ${inputs.yardCapacityTonnes}t (${inputs.undispatchedTonnes}t undispatched) • ` +
         `${inputs.moistureMeterCount} moisture meters. These are fixed infrastructure values, not editable here.`
       ),
-      h(Stepper, {
-        label: 'Gunny bags in stock',
-        value: inputs.gunnyBagsAvailable,
-        step: 50,
-        max: GUNNY_BAGS_MAX,
-        error: KisanValidation.validatePositiveIntegerInBounds(inputs.gunnyBagsAvailable, { max: GUNNY_BAGS_MAX, label: 'Gunny bags in stock' }),
-        onChange: (v) => setInputs({ ...inputs, gunnyBagsAvailable: v }),
-      }),
-      h(Stepper, {
-        label: 'Hamali gangs available',
-        value: inputs.hamaliGangCount,
-        step: 1,
-        max: HAMALI_GANG_MAX,
-        error: KisanValidation.validatePositiveIntegerInBounds(inputs.hamaliGangCount, { max: HAMALI_GANG_MAX, label: 'Hamali gangs available' }),
-        onChange: (v) => setInputs({ ...inputs, hamaliGangCount: v }),
-      }),
-      h(Stepper, {
-        label: 'Trucks for evacuation',
-        value: inputs.truckEvacuationCapacity,
-        step: 1,
-        max: TRUCK_EVACUATION_MAX,
-        error: KisanValidation.validatePositiveIntegerInBounds(inputs.truckEvacuationCapacity, { max: TRUCK_EVACUATION_MAX, label: 'Trucks for evacuation' }),
-        onChange: (v) => setInputs({ ...inputs, truckEvacuationCapacity: v }),
-      }),
+      h('div', { className: 'field-grid field-grid-2' },
+        h(Stepper, {
+          label: 'Gunny bags in stock',
+          value: inputs.gunnyBagsAvailable,
+          step: 50,
+          max: GUNNY_BAGS_MAX,
+          disabled: submitting,
+          error: KisanValidation.validatePositiveIntegerInBounds(inputs.gunnyBagsAvailable, { max: GUNNY_BAGS_MAX, label: 'Gunny bags in stock' }),
+          onChange: (v) => setInputs({ ...inputs, gunnyBagsAvailable: v }),
+        }),
+        h(Stepper, {
+          label: 'Hamali gangs available',
+          value: inputs.hamaliGangCount,
+          step: 1,
+          max: HAMALI_GANG_MAX,
+          disabled: submitting,
+          error: KisanValidation.validatePositiveIntegerInBounds(inputs.hamaliGangCount, { max: HAMALI_GANG_MAX, label: 'Hamali gangs available' }),
+          onChange: (v) => setInputs({ ...inputs, hamaliGangCount: v }),
+        }),
+        h(Stepper, {
+          label: 'Trucks for evacuation',
+          value: inputs.truckEvacuationCapacity,
+          step: 1,
+          max: TRUCK_EVACUATION_MAX,
+          disabled: submitting,
+          error: KisanValidation.validatePositiveIntegerInBounds(inputs.truckEvacuationCapacity, { max: TRUCK_EVACUATION_MAX, label: 'Trucks for evacuation' }),
+          onChange: (v) => setInputs({ ...inputs, truckEvacuationCapacity: v }),
+        })
+      ),
       h('div', { className: 'actions' },
         h('button', {
           className: 'btn btn-primary', onClick: submitDeclaration,
@@ -353,7 +385,10 @@ function App() {
             || !!KisanValidation.validatePositiveIntegerInBounds(inputs.gunnyBagsAvailable, { max: GUNNY_BAGS_MAX })
             || !!KisanValidation.validatePositiveIntegerInBounds(inputs.hamaliGangCount, { max: HAMALI_GANG_MAX })
             || !!KisanValidation.validatePositiveIntegerInBounds(inputs.truckEvacuationCapacity, { max: TRUCK_EVACUATION_MAX }),
-        }, submitting ? 'Submitting…' : 'Submit declaration')
+        },
+          submitting && h('span', { className: 'spinner' }),
+          submitting ? 'Submitting…' : 'Submit declaration'
+        )
       )
     ),
 

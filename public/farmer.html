@@ -5,22 +5,36 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
 <title>Kisan Slot — Farmer</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+<!-- Linked before the Tailwind CDN script so Tailwind's generated rules
+     (equal-or-higher specificity, later in the cascade) win any
+     property tie -- this page keeps its existing Tailwind utility
+     styling untouched and only gains theme.css's named component
+     classes (.badge, .callout, .spinner, .field-error, .empty-state)
+     that nothing here already defines, plus the shared tabular-nums
+     base rule. -->
+<link rel="stylesheet" href="/theme.css" />
 <script src="https://cdn.tailwindcss.com"></script>
 <script>
   tailwind.config = {
     theme: {
       extend: {
         // Names namespaced under "kisan" so they never collide with
-        // Tailwind's own default green/red scales -- these five are the
-        // palette from theme.css (shared with declaration.html and
-        // dashboard.html) and the ONLY colours used here.
+        // Tailwind's own default green/red scales -- this is the same
+        // palette as theme.css's :root tokens (shared with declaration
+        // and dashboard), duplicated as literal hex here because
+        // Tailwind's colour-opacity modifiers (bg-kisan-green/10 etc.,
+        // used throughout this file) need to decompose the colour into
+        // RGB channels at build time -- a var(--x) reference can't do
+        // that with the CDN's runtime JIT compiler. Keep both in sync.
         colors: {
           kisan: {
             ink: '#16241C',
             paper: '#EDF0EC',
             paperRaised: '#FFFFFF',
+            line: '#D3DBD4',
             gold: '#B8891B',
             green: '#2E7D4F',
+            amber: '#C6761A',
             red: '#A32B21',
           },
         },
@@ -87,11 +101,13 @@ const TRANSLATIONS = {
     fieldQuantity: 'Quantity (quintals)',
     quantityPlaceholder: 'e.g. 40',
     fieldCentre: 'Centre',
+    noCentresNote: 'No centres available right now.',
     fieldDate: 'Date',
     bookButton: 'Book slot',
     bookingEllipsis: 'Booking…',
     enterAllFields: 'Enter a quantity, centre, and date.',
     bookedBadge: 'Booked',
+    alreadyBookedMessage: 'You already have a booking for this date.',
     rowQuantity: 'Quantity',
     rowDate: 'Date',
     rowSlotsLeft: 'Slots left after this',
@@ -188,11 +204,13 @@ const TRANSLATIONS = {
     fieldQuantity: 'मात्रा (क्विंटल)',
     quantityPlaceholder: 'जैसे 40',
     fieldCentre: 'केंद्र',
+    noCentresNote: 'अभी कोई केंद्र उपलब्ध नहीं है।',
     fieldDate: 'तारीख',
     bookButton: 'स्लॉट बुक करें',
     bookingEllipsis: 'बुक हो रहा है…',
     enterAllFields: 'मात्रा, केंद्र और तारीख दर्ज करें।',
     bookedBadge: 'बुक हो गया',
+    alreadyBookedMessage: 'आपके पास इस तारीख के लिए पहले से ही एक बुकिंग है।',
     rowQuantity: 'मात्रा',
     rowDate: 'तारीख',
     rowSlotsLeft: 'इसके बाद बचे स्लॉट',
@@ -289,11 +307,13 @@ const TRANSLATIONS = {
     fieldQuantity: 'పరిమాణం (క్వింటాళ్లు)',
     quantityPlaceholder: 'ఉదా. 40',
     fieldCentre: 'కేంద్రం',
+    noCentresNote: 'ప్రస్తుతం కేంద్రాలు అందుబాటులో లేవు.',
     fieldDate: 'తేదీ',
     bookButton: 'స్లాట్ బుక్ చేయండి',
     bookingEllipsis: 'బుక్ అవుతోంది…',
     enterAllFields: 'పరిమాణం, కేంద్రం మరియు తేదీని నమోదు చేయండి.',
     bookedBadge: 'బుక్ అయింది',
+    alreadyBookedMessage: 'ఈ తేదీకి మీకు ఇప్పటికే ఒక బుకింగ్ ఉంది.',
     rowQuantity: 'పరిమాణం',
     rowDate: 'తేదీ',
     rowSlotsLeft: 'దీని తర్వాత మిగిలిన స్లాట్లు',
@@ -500,49 +520,56 @@ const STAGE_LABEL_KEY = {
 // ---------------------------------------------------------------------------
 
 function Card({ children, className }) {
-  return h('div', { className: `bg-kisan-paperRaised border border-kisan-ink/10 rounded-2xl p-4 shadow-sm ${className || ''}` }, children);
+  return h('div', { className: `bg-kisan-paperRaised border border-kisan-line rounded-2xl p-4 ${className || ''}` }, children);
 }
 
 function SectionHeading({ icon, children }) {
   return h('h2', { className: 'flex items-center gap-2 text-base font-extrabold text-kisan-ink mt-5 mb-2' },
-    h('i', { className: `fa-solid ${icon} text-kisan-gold text-sm` }),
+    // Decorative only -- ink, not a status colour, since this icon
+    // signals nothing (colour here is reserved for real status/action).
+    h('i', { className: `fa-solid ${icon} text-kisan-ink/40 text-sm` }),
     children
   );
 }
 
 function Row({ k, v }) {
-  return h('div', { className: 'flex items-center justify-between gap-3 py-2 border-b border-kisan-ink/[0.06] last:border-b-0' },
+  return h('div', { className: 'flex items-center justify-between gap-3 py-2 border-b border-kisan-line last:border-b-0' },
     h('span', { className: 'text-sm text-kisan-ink/60' }, k),
-    h('span', { className: 'font-bold text-right' }, v)
+    h('span', { className: 'font-bold text-right tabular-nums' }, v)
   );
 }
 
+// warning = amber (never gold -- gold is reserved for the primary
+// action). success = green (healthy). danger = red (blocked).
 function Badge({ tone, children }) {
   const toneClass = {
     success: 'bg-kisan-green/10 text-kisan-green border-kisan-green/40',
-    warning: 'bg-kisan-gold/10 text-kisan-gold border-kisan-gold/50',
+    warning: 'bg-kisan-amber/10 text-kisan-amber border-kisan-amber/50',
     danger: 'bg-kisan-red/10 text-kisan-red border-kisan-red/40',
-    neutral: 'bg-kisan-ink/5 text-kisan-ink/60 border-kisan-ink/10',
-  }[tone] || 'bg-kisan-ink/5 text-kisan-ink/60 border-kisan-ink/10';
+    neutral: 'bg-kisan-ink/5 text-kisan-ink/60 border-kisan-line',
+  }[tone] || 'bg-kisan-ink/5 text-kisan-ink/60 border-kisan-line';
   return h('span', { className: `inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold border ${toneClass}` }, children);
 }
 
 function Callout({ tone, icon, children }) {
   const toneClass = {
     success: 'bg-kisan-green/10 border-kisan-green/40',
-    warning: 'bg-kisan-gold/10 border-kisan-gold/50',
+    warning: 'bg-kisan-amber/10 border-kisan-amber/50',
     danger: 'bg-kisan-red/10 border-kisan-red/40',
-  }[tone] || 'bg-kisan-ink/5 border-kisan-ink/10';
+  }[tone] || 'bg-kisan-ink/5 border-kisan-line';
   return h('div', { className: `rounded-2xl border p-4 flex items-start gap-2.5 ${toneClass}` },
     icon && h('i', { className: `fa-solid ${icon} mt-1 flex-none` }),
     h('div', { className: 'min-w-0 flex-1' }, children)
   );
 }
 
+// Gold is the one and only primary/"go" colour (see theme.css) -- every
+// primary action on this screen uses it, never green (green means
+// healthy/success status, not "click me").
 function PrimaryButton({ children, onClick, disabled, icon }) {
   return h('button', {
     type: 'button', onClick, disabled,
-    className: 'w-full min-h-[3.25rem] flex items-center justify-center gap-2 rounded-2xl bg-kisan-green text-white text-base font-extrabold shadow-md active:scale-[0.99] transition disabled:opacity-50 disabled:cursor-default',
+    className: 'w-full min-h-[3.25rem] flex items-center justify-center gap-2 rounded-2xl bg-kisan-gold text-white text-base font-extrabold active:scale-[0.99] transition disabled:opacity-50 disabled:cursor-default',
   },
     icon && h('i', { className: `fa-solid ${icon}` }),
     children
@@ -552,7 +579,7 @@ function PrimaryButton({ children, onClick, disabled, icon }) {
 function SecondaryButton({ children, onClick, disabled }) {
   return h('button', {
     type: 'button', onClick, disabled,
-    className: 'w-full min-h-[3.25rem] rounded-2xl bg-kisan-paperRaised text-kisan-ink text-base font-bold border-2 border-kisan-ink/15 active:scale-[0.99] transition disabled:opacity-50',
+    className: 'w-full min-h-[3.25rem] rounded-2xl bg-kisan-paperRaised text-kisan-ink text-base font-bold border-2 border-kisan-line active:scale-[0.99] transition disabled:opacity-50',
   }, children);
 }
 
@@ -563,7 +590,7 @@ function FieldLabel({ icon, children }) {
   );
 }
 
-const inputClass = 'w-full min-h-[3.25rem] text-base px-4 rounded-2xl border-2 border-kisan-ink/15 bg-kisan-paperRaised text-kisan-ink focus:outline-none focus:border-kisan-green';
+const inputClass = 'w-full min-h-[3.25rem] text-base px-4 rounded-2xl border-2 border-kisan-line bg-kisan-paperRaised text-kisan-ink tabular-nums focus:outline-none focus:border-kisan-gold';
 
 // ---------------------------------------------------------------------------
 // Language selector
@@ -698,11 +725,30 @@ function QRTicket({ booking, farmer }) {
 
 function AlternativeCard({ title, detail, onBook }) {
   const t = useT();
-  return h('div', { className: 'rounded-2xl border border-kisan-ink/10 bg-kisan-paperRaised p-3.5 mb-2.5' },
+  return h('div', { className: 'rounded-2xl border border-kisan-line bg-kisan-paperRaised p-3.5 mb-2.5' },
     h('div', { className: 'font-bold mb-0.5' }, title),
     h('div', { className: 'text-sm text-kisan-ink/60 mb-2.5' }, detail),
     h(SecondaryButton, { onClick: onBook }, t('bookThisInsteadBtn'))
   );
+}
+
+// Server-returned validation strings (the rare case the server rejects
+// something the client-side check let through) mapped back to the field
+// they're about, so they render inline under that field instead of in a
+// banner. Anything that doesn't match a known field falls into
+// `general`, still shown -- never dropped silently.
+const BOOKING_FIELD_ERROR_PATTERNS = [
+  { test: /quintals|quantity/i, field: 'quintals' },
+  { test: /\bdate\b/i, field: 'date' },
+  { test: /centreId|centre/i, field: 'centre' },
+];
+function classifyBookingErrors(errors) {
+  const byField = { quintals: [], date: [], centre: [], general: [] };
+  for (const e of errors || []) {
+    const match = BOOKING_FIELD_ERROR_PATTERNS.find((p) => p.test.test(e));
+    (match ? byField[match.field] : byField.general).push(e);
+  }
+  return byField;
 }
 
 function BookScreen({ farmer, centres, onSwitchTab }) {
@@ -714,6 +760,11 @@ function BookScreen({ farmer, centres, onSwitchTab }) {
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState(null); // { httpStatus, body }
   const [networkError, setNetworkError] = useState(null);
+  // Validation errors that stay on the booking form (inline under the
+  // field, never a banner that replaces it) -- distinct from `result`,
+  // which is for outcomes that replace the form with their own screen
+  // (booked, needs review, no capacity, already booked, ...).
+  const [serverErrors, setServerErrors] = useState(null); // string[] | null
 
   useEffect(() => {
     if (!centreId && centres[0]) setCentreId(centres[0].id);
@@ -739,18 +790,30 @@ function BookScreen({ farmer, centres, onSwitchTab }) {
     const quantityErr = KisanValidation.validateQuantity(payload.quintals, farmer.permittedQuantityQuintals);
     const dateErr = KisanValidation.validateBookingDate(payload.date, today());
     if (quantityErr || dateErr || !payload.centreId) {
-      setResult({ httpStatus: 400, body: { status: 'BAD_REQUEST', errors: [quantityErr, dateErr, !payload.centreId ? t('enterAllFields') : null].filter(Boolean) } });
+      setResult(null);
+      setServerErrors([quantityErr, dateErr, !payload.centreId ? t('enterAllFields') : null].filter(Boolean));
       return;
     }
     setSubmitting(true);
     setNetworkError(null);
+    setServerErrors(null);
     try {
       const res = await fetchJson('/api/bookings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-      setResult(res);
+      // A validation failure the server caught (the client-side check
+      // above should already prevent most of these) stays on the form,
+      // rendered field-by-field -- every other outcome (booked, already
+      // booked, needs review, no capacity, not found, or anything else)
+      // replaces the form with its own screen below.
+      if (res.body && res.body.status === 'BAD_REQUEST') {
+        setResult(null);
+        setServerErrors(res.body.errors && res.body.errors.length ? res.body.errors : [res.body.message || t('somethingWrong')]);
+      } else {
+        setResult(res);
+      }
       if (overrides.centreId) setCentreId(overrides.centreId);
       if (overrides.date) setDate(overrides.date);
     } catch (err) {
@@ -762,9 +825,11 @@ function BookScreen({ farmer, centres, onSwitchTab }) {
 
   function reset() {
     setResult(null);
+    setServerErrors(null);
   }
 
   const status = result && result.body && result.body.status;
+  const serverErrorsByField = useMemo(() => classifyBookingErrors(serverErrors), [serverErrors]);
 
   if (status === 'BOOKED') {
     const b = result.body.booking;
@@ -832,7 +897,22 @@ function BookScreen({ farmer, centres, onSwitchTab }) {
     );
   }
 
-  if (status === 'NOT_FOUND' || status === 'BAD_REQUEST') {
+  if (status === 'ALREADY_BOOKED') {
+    return h('div', null,
+      h(Callout, { tone: 'danger', icon: 'fa-calendar-xmark' },
+        h('p', { className: 'font-bold m-0' }, t('alreadyBookedMessage'))
+      ),
+      h('div', { className: 'mt-3' },
+        h(PrimaryButton, { onClick: () => onSwitchTab('status'), icon: 'fa-route' }, t('seeStatusBtn'))
+      )
+    );
+  }
+
+  // Catch-all: anything else the server sent back (an unknown farmer/
+  // centre, a raw 500 from the global error handler, or any status this
+  // screen doesn't have a dedicated view for) still gets a plain message
+  // -- never silence, matching every other branch above.
+  if (status) {
     const message = result.body.message || (result.body.errors || []).join(', ') || t('somethingWrong');
     return h('div', null,
       h(Callout, { tone: 'danger', icon: 'fa-circle-exclamation' }, h('p', { className: 'font-bold m-0' }, message)),
@@ -847,23 +927,36 @@ function BookScreen({ farmer, centres, onSwitchTab }) {
         h(FieldLabel, { icon: 'fa-weight-hanging' }, t('fieldQuantity')),
         h('input', {
           type: 'number', min: 0, max: KisanValidation.ABSOLUTE_QUANTITY_CAP_QUINTALS, step: '0.1', value: quintals, placeholder: t('quantityPlaceholder'),
-          className: inputClass + (quintalsError ? ' border-red-500' : ''), onChange: (e) => setQuintals(e.target.value),
+          className: inputClass + (quintalsError || serverErrorsByField.quintals.length ? ' border-kisan-red' : ''), onChange: (e) => setQuintals(e.target.value),
         }),
-        quintalsError && h('p', { className: 'text-xs text-red-600 mt-1' }, quintalsError)
+        quintalsError && h('p', { className: 'field-error' }, quintalsError),
+        !quintalsError && serverErrorsByField.quintals.map((e, i) => h('p', { key: i, className: 'field-error' }, e))
       ),
       h('div', { className: 'mb-4' },
         h(FieldLabel, { icon: 'fa-warehouse' }, t('fieldCentre')),
-        h('select', { value: centreId, className: inputClass, onChange: (e) => setCentreId(e.target.value) },
-          centres.map((c) => h('option', { key: c.id, value: c.id }, `${centreDisplayName(c, lang)} (${c.code})`))
-        )
+        centres.length === 0
+          ? h('div', { className: 'empty-state' }, h('span', { className: 'ic' }, '🏚️'), t('noCentresNote'))
+          : h('select', {
+              value: centreId, className: inputClass + (serverErrorsByField.centre.length ? ' border-kisan-red' : ''),
+              onChange: (e) => setCentreId(e.target.value),
+            },
+              centres.map((c) => h('option', { key: c.id, value: c.id }, `${centreDisplayName(c, lang)} (${c.code})`))
+            ),
+        serverErrorsByField.centre.map((e, i) => h('p', { key: i, className: 'field-error' }, e))
       ),
       h('div', null,
         h(FieldLabel, { icon: 'fa-calendar-day' }, t('fieldDate')),
         h('input', {
           type: 'date', value: date, min: today(), max: maxBookingDate(),
-          className: inputClass + (dateError ? ' border-red-500' : ''), onChange: (e) => setDate(e.target.value),
+          className: inputClass + (dateError || serverErrorsByField.date.length ? ' border-kisan-red' : ''), onChange: (e) => setDate(e.target.value),
         }),
-        dateError && h('p', { className: 'text-xs text-red-600 mt-1' }, dateError)
+        dateError && h('p', { className: 'field-error' }, dateError),
+        !dateError && serverErrorsByField.date.map((e, i) => h('p', { key: i, className: 'field-error' }, e))
+      )
+    ),
+    serverErrorsByField.general.length > 0 && h('div', { className: 'mt-3' },
+      h(Callout, { tone: 'danger', icon: 'fa-circle-exclamation' },
+        serverErrorsByField.general.map((e, i) => h('p', { key: i, className: 'm-0' }, e))
       )
     ),
     h(RainWarning, { centre: selectedCentre, date }),
@@ -888,7 +981,7 @@ function MoistureCard({ moisture }) {
   }
   return h(Card, null,
     h('div', { className: 'flex justify-between items-center mb-2' },
-      h('span', { className: 'font-bold flex items-center gap-2' }, h('i', { className: 'fa-solid fa-droplet text-kisan-gold' }), t('moistureTestLabel')),
+      h('span', { className: 'font-bold flex items-center gap-2' }, h('i', { className: 'fa-solid fa-droplet text-kisan-ink/40' }), t('moistureTestLabel')),
       h(Badge, { tone: moisture.verdict === 'accept' ? 'success' : moisture.verdict === 'cut' ? 'warning' : 'danger' },
         t(VERDICT_KEY[moisture.verdict] || moisture.verdict)
       )
@@ -905,7 +998,7 @@ function Timeline({ stages }) {
     stages.map((s) => h('li', { key: s.key, className: 'flex gap-3 py-3 border-b border-kisan-ink/[0.06] last:border-b-0' },
       h('span', {
         className: `w-8 h-8 rounded-full flex-none mt-0.5 flex items-center justify-center text-sm ${
-          s.done ? 'bg-kisan-green text-white' : 'bg-kisan-ink/5 text-kisan-ink/30 border border-kisan-ink/15'
+          s.done ? 'bg-kisan-green text-white' : 'bg-kisan-ink/5 text-kisan-ink/30 border border-kisan-line'
         }`,
       }, h('i', { className: `fa-solid ${STAGE_ICON[s.key] || 'fa-circle'}` })),
       h('div', null,
@@ -937,7 +1030,11 @@ function StatusScreen({ farmer, onSwitchTab }) {
     return () => { cancelled = true; };
   }, [farmer.id]);
 
-  if (state.loading) return h('p', { className: 'text-sm text-kisan-ink/60 py-2' }, t('loadingStatus'));
+  if (state.loading) {
+    return h('p', { className: 'text-sm text-kisan-ink/60 py-2 flex items-center gap-2' },
+      h('i', { className: 'fa-solid fa-circle-notch fa-spin' }), t('loadingStatus')
+    );
+  }
   if (state.error) return h(Callout, { tone: 'danger', icon: 'fa-circle-exclamation' }, state.error);
   if (state.notFound) {
     return h('div', null,
@@ -986,7 +1083,11 @@ function JFormScreen({ farmer, onSwitchTab }) {
     return () => { cancelled = true; };
   }, [farmer.id]);
 
-  if (state.loading) return h('p', { className: 'text-sm text-kisan-ink/60 py-2' }, t('loadingBill'));
+  if (state.loading) {
+    return h('p', { className: 'text-sm text-kisan-ink/60 py-2 flex items-center gap-2' },
+      h('i', { className: 'fa-solid fa-circle-notch fa-spin' }), t('loadingBill')
+    );
+  }
   if (state.error) return h(Callout, { tone: 'danger', icon: 'fa-circle-exclamation' }, state.error);
   if (state.notFound) {
     return h('div', null,
@@ -1012,7 +1113,7 @@ function JFormScreen({ farmer, onSwitchTab }) {
             h('span', null, d.type, d.description ? h('div', { className: 'text-xs text-kisan-ink/60' }, d.description) : null),
             h('span', null, `− ${formatINR(d.amount)}`)
           )),
-      j.deductions.length > 0 && h('div', { className: 'flex justify-between border-t border-kisan-ink/10 mt-1 pt-2 font-bold' },
+      j.deductions.length > 0 && h('div', { className: 'flex justify-between border-t border-kisan-line mt-1 pt-2 font-bold' },
         h('span', null, t('totalDeductions')),
         h('span', null, `− ${formatINR(j.totalDeductions)}`)
       )
@@ -1094,7 +1195,9 @@ function AppBody() {
 
   if (session.loading) {
     return h('div', { className: 'max-w-md mx-auto px-4 py-8' },
-      h('p', { className: 'text-sm text-kisan-ink/60' }, t('checkingSession'))
+      h('p', { className: 'text-sm text-kisan-ink/60 flex items-center gap-2' },
+        h('i', { className: 'fa-solid fa-circle-notch fa-spin' }), t('checkingSession')
+      )
     );
   }
 
@@ -1114,7 +1217,9 @@ function AppBody() {
 
     error && h('div', { className: 'mb-4' }, h(Callout, { tone: 'danger', icon: 'fa-circle-exclamation' }, error)),
 
-    farmerLoading && h('p', { className: 'text-sm text-kisan-ink/60 py-2' }, t('loadingYourDetails')),
+    farmerLoading && h('p', { className: 'text-sm text-kisan-ink/60 py-2 flex items-center gap-2' },
+      h('i', { className: 'fa-solid fa-circle-notch fa-spin' }), t('loadingYourDetails')
+    ),
 
     farmer && farmer.needsOfficerReview && h(OfficerReviewCard, { farmer }),
 
@@ -1126,7 +1231,7 @@ function AppBody() {
           type: 'button',
           onClick: () => setTab(tb.key),
           className: `flex flex-col items-center justify-center gap-1 min-h-[3.5rem] rounded-2xl text-sm font-bold border-2 transition ${
-            tab === tb.key ? 'bg-kisan-ink text-white border-kisan-ink' : 'bg-kisan-paperRaised text-kisan-ink border-kisan-ink/15'
+            tab === tb.key ? 'bg-kisan-ink text-white border-kisan-ink' : 'bg-kisan-paperRaised text-kisan-ink border-kisan-line'
           }`,
         },
           h('i', { className: `fa-solid ${tb.icon}` }),
@@ -1153,10 +1258,10 @@ function App() {
   }, []);
 
   return h(LangContext.Provider, { value: lang },
-    h('header', { className: 'sticky top-0 z-10 bg-kisan-ink text-white px-4 py-3 shadow-md' },
+    h('header', { className: 'sticky top-0 z-10 bg-kisan-ink text-white px-4 py-3 border-b border-white/10' },
       h('div', { className: 'max-w-md mx-auto flex items-center justify-between gap-3' },
         h('div', { className: 'flex items-center gap-2.5 min-w-0' },
-          h('i', { className: 'fa-solid fa-wheat-awn text-kisan-gold text-xl flex-none' }),
+          h('i', { className: 'fa-solid fa-wheat-awn text-white/80 text-xl flex-none' }),
           h('div', { className: 'min-w-0' },
             h('h1', { className: 'text-lg font-extrabold leading-tight truncate' }, translate(lang, 'appTitle')),
             h('p', { className: 'text-xs text-white/70 leading-tight truncate' }, translate(lang, 'appSubtitle'))

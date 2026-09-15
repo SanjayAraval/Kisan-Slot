@@ -5,43 +5,38 @@
 <title>District Officer Dashboard</title>
 <link rel="stylesheet" href="/theme.css" />
 <style>
-  body { max-width: 1000px; margin: 2rem auto; padding: 0 1rem; }
-  h1 { font-size: 1.3rem; margin-bottom: 0.25rem; }
-  h2 { font-size: 1.05rem; margin: 0 0 0.6rem; }
-  .sub { color: var(--ink-60); margin-top: 0; margin-bottom: 1rem; font-size: 0.9rem; }
-  .nav { font-size: 0.85rem; margin-bottom: 1rem; }
-  .nav a { color: var(--green); }
-  .date-row { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 1.25rem; }
-  .date-row label { font-size: 0.85rem; color: var(--ink-60); }
-  .date-row input[type="date"] { padding: 0.35rem; font-size: 0.95rem; border: 1px solid var(--ink-16); border-radius: 6px; background: var(--paper-raised); color: var(--ink); }
-  section { margin-bottom: 1.75rem; }
-  .msg { padding: 0.6rem 0.8rem; border-radius: 6px; margin-bottom: 1rem; font-size: 0.9rem; }
-  .msg.error { background: var(--red-bg); color: var(--red); border: 1px solid var(--red-border); }
-  .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.6rem; }
-  .stat { background: var(--ink-06); border-radius: 8px; padding: 0.75rem 0.9rem; }
-  .stat.risk { background: var(--red-bg); }
+  body { max-width: 1100px; margin: 0 auto; padding: var(--space-5) var(--space-4) var(--space-8); }
+  h1 { font-size: 1.35rem; }
+  h2 { font-size: 1.05rem; margin: 0 0 var(--space-3); }
+  .sub { color: var(--ink-60); margin: 0 0 var(--space-4); font-size: 0.9rem; }
+  .nav { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2) var(--space-3); font-size: 0.85rem; margin-bottom: var(--space-5); }
+  .nav a { color: var(--green); font-weight: 600; }
+  .date-row { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-3); margin-bottom: var(--space-6); }
+  .date-row label { font-size: 0.85rem; color: var(--ink-60); margin-bottom: 0; }
+  .date-row input[type="date"] { width: auto; min-height: 40px; padding: 0.4rem 0.6rem; font-size: 0.95rem; }
+  section { margin-bottom: var(--space-7); }
+  .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--space-3); }
+  @media (max-width: 640px) { .stat-grid { grid-template-columns: repeat(2, 1fr); } }
+  .stat { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: var(--space-4); }
+  .stat.risk { background: var(--red-bg); border-color: var(--red-border); }
   .stat .n { font-size: 1.6rem; font-weight: 700; }
   .stat .l { font-size: 0.78rem; color: var(--ink-60); }
-  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
-  table th, table td { padding: 0.45rem 0.6rem; border-bottom: 1px solid var(--ink-10); text-align: left; }
-  table th { color: var(--ink-60); font-weight: 600; font-size: 0.78rem; text-transform: uppercase; }
-  tr.at-risk { background: var(--gold-bg); }
+  tr.at-risk { background: var(--amber-bg); }
   tr.overbooked td:first-child { border-left: 3px solid var(--red); }
   .cover-null { color: var(--ink-30); }
   .cover-low { color: var(--red); font-weight: 700; }
-  .alert-card { border: 1px solid var(--gold-border); background: var(--gold-bg); border-radius: 8px; padding: 0.75rem 0.9rem; margin-bottom: 0.6rem; }
-  .alert-card .head { display: flex; justify-content: space-between; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+  .alert-card { border: 1px solid var(--amber-border); background: var(--amber-bg); border-radius: var(--radius); padding: var(--space-4); margin-bottom: var(--space-3); }
+  .alert-card .head { display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
   .alert-card .name { font-weight: 600; }
-  .alert-card .reason { font-size: 0.8rem; color: var(--gold-ink); }
-  .alert-card .detail { font-size: 0.82rem; color: var(--ink-60); margin-top: 0.3rem; }
-  .release-form { display: flex; align-items: center; gap: 0.4rem; margin-top: 0.5rem; }
-  .release-form input[type="number"] { width: 6rem; padding: 0.3rem; font-size: 0.9rem; border: 1px solid var(--ink-16); border-radius: 6px; }
-  .release-ok { color: var(--green); font-size: 0.82rem; margin-top: 0.4rem; }
-  .empty { color: var(--ink-30); font-size: 0.85rem; }
+  .alert-card .reason { font-size: 0.8rem; color: var(--amber-ink); }
+  .alert-card .detail { font-size: 0.82rem; color: var(--ink-60); margin-top: var(--space-1); }
+  .release-form { display: flex; align-items: center; gap: var(--space-2); margin-top: var(--space-3); flex-wrap: wrap; }
+  .release-form input[type="number"] { width: 6.5rem; min-height: 40px; padding: 0.4rem 0.6rem; }
+  .release-ok { display: flex; align-items: center; gap: var(--space-2); color: var(--green-ink); font-size: 0.85rem; font-weight: 600; margin-top: var(--space-2); }
   .bar-bg { background: var(--ink-10); border-radius: 4px; height: 0.5rem; width: 100%; overflow: hidden; }
   .bar-fill { background: var(--red); height: 100%; }
   .bar-fill.ok { background: var(--green); }
-  .link-btn { background: none; border: none; color: var(--green); font-weight: 600; cursor: pointer; padding: 0; text-decoration: underline; font-size: inherit; }
+  .link-btn { background: none; border: none; color: var(--green); font-weight: 600; cursor: pointer; padding: 0; text-decoration: underline; font-size: inherit; min-height: auto; }
 </style>
 </head>
 <body>
@@ -97,7 +92,7 @@ async function fetchJson(url, options) {
 
 function StatCard({ value, label, risk }) {
   return h('div', { className: 'stat' + (risk ? ' risk' : '') },
-    h('div', { className: 'n' }, value),
+    h('div', { className: 'n num' }, value),
     h('div', { className: 'l' }, label)
   );
 }
@@ -108,28 +103,35 @@ function coverCell(daysOfCover) {
 }
 
 function CentreGrid({ centres }) {
-  if (centres.length === 0) return h('p', { className: 'empty' }, 'No centres operating on this date.');
-  return h('table', null,
-    h('thead', null, h('tr', null,
-      h('th', null, 'Centre'), h('th', null, 'Type'), h('th', null, 'Weighing'),
-      h('th', null, 'Capacity (lots)'), h('th', null, 'Booked'),
-      h('th', null, 'Binding constraint'), h('th', null, 'Gunny cover')
-    )),
-    h('tbody', null,
-      centres.map((c) => {
-        const bindingLabel = (c.bindingConstraints || [c.bindingConstraint])
-          .map((k) => CONSTRAINT_LABELS[k] || k).join(' & ');
-        const rowClasses = [c.atRisk ? 'at-risk' : '', c.overbooked ? 'overbooked' : ''].filter(Boolean).join(' ');
-        return h('tr', { key: c.centreId, className: rowClasses },
-          h('td', null, `${c.name} (${c.code})`),
-          h('td', null, CENTRE_TYPE_LABELS[c.centreType] || c.centreType),
-          h('td', null, WEIGHING_MODE_LABELS[c.weighingMode] || c.weighingMode),
-          h('td', null, c.bookableCapacity),
-          h('td', null, `${c.bookedSlots}${c.overbooked ? ' (full)' : ''}`),
-          h('td', null, bindingLabel),
-          h('td', null, coverCell(c.daysOfCover))
-        );
-      })
+  if (centres.length === 0) {
+    return h('div', { className: 'empty-state' },
+      h('span', { className: 'ic' }, '📋'),
+      'No centres operating on this date.'
+    );
+  }
+  return h('div', { className: 'table-scroll' },
+    h('table', null,
+      h('thead', null, h('tr', null,
+        h('th', null, 'Centre'), h('th', null, 'Type'), h('th', null, 'Weighing'),
+        h('th', null, 'Capacity (lots)'), h('th', null, 'Booked'),
+        h('th', null, 'Binding constraint'), h('th', null, 'Gunny cover')
+      )),
+      h('tbody', null,
+        centres.map((c) => {
+          const bindingLabel = (c.bindingConstraints || [c.bindingConstraint])
+            .map((k) => CONSTRAINT_LABELS[k] || k).join(' & ');
+          const rowClasses = [c.atRisk ? 'at-risk' : '', c.overbooked ? 'overbooked' : ''].filter(Boolean).join(' ');
+          return h('tr', { key: c.centreId, className: rowClasses },
+            h('td', null, `${c.name} (${c.code})`),
+            h('td', null, CENTRE_TYPE_LABELS[c.centreType] || c.centreType),
+            h('td', null, WEIGHING_MODE_LABELS[c.weighingMode] || c.weighingMode),
+            h('td', { className: 'num' }, c.bookableCapacity),
+            h('td', { className: 'num' }, `${c.bookedSlots}${c.overbooked ? ' (full)' : ''}`),
+            h('td', null, bindingLabel),
+            h('td', { className: 'num' }, coverCell(c.daysOfCover))
+          );
+        })
+      )
     )
   );
 }
@@ -158,20 +160,24 @@ function ReleaseBagsForm({ centreId, date, onReleased }) {
     }
   }
 
-  if (done) return h('div', { className: 'release-ok' }, 'Bags released -- capacity recomputed.');
+  if (done) {
+    return h('div', { className: 'release-ok' }, '✓ Bags released -- capacity recomputed.');
+  }
 
   return h('div', null,
     h('div', { className: 'release-form' },
       h('input', {
-        type: 'number', min: 1, value: amount,
+        type: 'number', min: 1, value: amount, disabled: submitting,
+        'aria-label': 'Additional bags to release',
         onChange: (e) => setAmount(Math.max(1, Number(e.target.value) || 0)),
       }),
       h('span', { style: { fontSize: '0.82rem', color: 'var(--ink-60)' } }, 'bags'),
-      h('button', { className: 'btn btn-primary', onClick: submit, disabled: submitting },
+      h('button', { className: 'btn btn-primary btn-sm', onClick: submit, disabled: submitting },
+        submitting && h('span', { className: 'spinner' }),
         submitting ? 'Releasing…' : 'Release bags'
       )
     ),
-    error && h('div', { className: 'msg error', style: { marginTop: '0.4rem' } }, error)
+    error && h('div', { className: 'field-error' }, error)
   );
 }
 
@@ -194,31 +200,43 @@ function AlertCard({ alert, date, onReleased }) {
 }
 
 function AlertsPanel({ alerts, date, onReleased }) {
-  if (alerts.length === 0) return h('p', { className: 'empty' }, 'No centres at risk on this date.');
+  if (alerts.length === 0) {
+    return h('div', { className: 'empty-state' },
+      h('span', { className: 'ic' }, '✓'),
+      'No centres at risk on this date.'
+    );
+  }
   return h('div', null, alerts.map((a) => h(AlertCard, { key: a.centreId, alert: a, date, onReleased })));
 }
 
 function EvacuationBacklog({ rows }) {
-  if (rows.length === 0) return h('p', { className: 'empty' }, 'No centres operating on this date.');
-  return h('table', null,
-    h('thead', null, h('tr', null,
-      h('th', null, 'Centre'), h('th', null, 'Undispatched (t)'), h('th', null, 'Yard capacity (t)'), h('th', null, 'Utilisation')
-    )),
-    h('tbody', null,
-      rows.map((r) => h('tr', { key: r.centreId },
-        h('td', null, `${r.name} (${r.code})`),
-        h('td', null, r.undispatchedTonnes),
-        h('td', null, r.yardCapacityTonnes),
-        h('td', null,
-          h('div', { className: 'bar-bg' },
-            h('div', {
-              className: 'bar-fill' + (r.yardUtilization < 0.75 ? ' ok' : ''),
-              style: { width: `${Math.min(100, r.yardUtilization * 100)}%` },
-            })
-          ),
-          h('span', { style: { fontSize: '0.75rem', color: 'var(--ink-60)' } }, `${Math.round(r.yardUtilization * 100)}%`)
-        )
-      ))
+  if (rows.length === 0) {
+    return h('div', { className: 'empty-state' },
+      h('span', { className: 'ic' }, '🚚'),
+      'No centres operating on this date.'
+    );
+  }
+  return h('div', { className: 'table-scroll' },
+    h('table', null,
+      h('thead', null, h('tr', null,
+        h('th', null, 'Centre'), h('th', null, 'Undispatched (t)'), h('th', null, 'Yard capacity (t)'), h('th', null, 'Utilisation')
+      )),
+      h('tbody', null,
+        rows.map((r) => h('tr', { key: r.centreId },
+          h('td', null, `${r.name} (${r.code})`),
+          h('td', { className: 'num' }, r.undispatchedTonnes),
+          h('td', { className: 'num' }, r.yardCapacityTonnes),
+          h('td', null,
+            h('div', { className: 'bar-bg' },
+              h('div', {
+                className: 'bar-fill' + (r.yardUtilization < 0.75 ? ' ok' : ''),
+                style: { width: `${Math.min(100, r.yardUtilization * 100)}%` },
+              })
+            ),
+            h('span', { className: 'num', style: { fontSize: '0.75rem', color: 'var(--ink-60)' } }, `${Math.round(r.yardUtilization * 100)}%`)
+          )
+        ))
+      )
     )
   );
 }
@@ -263,7 +281,7 @@ function App() {
   }
 
   if (session.loading) {
-    return h('div', null, h('p', { className: 'sub' }, 'Checking your session…'));
+    return h('div', { className: 'loading-row' }, h('span', { className: 'spinner' }), 'Checking your session…');
   }
 
   const summary = dashboard && dashboard.summary;
@@ -284,10 +302,15 @@ function App() {
     h('div', { className: 'date-row' },
       h('label', null, 'Date'),
       h('input', { type: 'date', value: date, onChange: (e) => setDate(e.target.value) }),
-      h('button', { className: 'btn btn-secondary', onClick: load, disabled: loading }, loading ? 'Loading…' : 'Refresh')
+      h('button', { className: 'btn btn-secondary btn-sm', onClick: load, disabled: loading },
+        loading && h('span', { className: 'spinner' }),
+        loading ? 'Loading…' : 'Refresh'
+      )
     ),
 
-    error && h('div', { className: 'msg error' }, error),
+    error && h('div', { className: 'callout callout-danger', style: { marginBottom: 'var(--space-4)' } }, error),
+
+    loading && !dashboard && h('div', { className: 'loading-row' }, h('span', { className: 'spinner' }), 'Loading district dashboard…'),
 
     summary && h('section', null,
       h('div', { className: 'stat-grid' },

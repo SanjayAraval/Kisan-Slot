@@ -1,37 +1,74 @@
-/* Shared design tokens for the Kisan Slot screens (declaration, dashboard,
-   farmer). Colour is semantic only: ink/paper are structure and text;
-   gold/green/red exist ONLY to signal warning/success/danger state --
-   never used decoratively. Plain static CSS, no build step. */
+/* Shared design tokens + base component styles for every Kisan Slot
+   screen (login, registration, farmer, declaration, dashboard). One
+   file, one palette -- every page links this before its own styles.
+
+   Colour is semantic only, never decorative:
+     red   = blocked / binding constraint
+     amber = warning
+     green = healthy
+     gold  = primary action
+   ink/paper/surface/line are structure and text only.
+
+   Flat surfaces throughout -- no gradients, no shadows, 1px borders. */
 
 :root {
-  --ink: #16241C;
-  --paper: #EDF0EC;
-  --paper-raised: #FFFFFF;
-  --gold: #B8891B;
-  --green: #2E7D4F;
-  --red: #A32B21;
+  /* ---- Palette -- reference these everywhere; no raw hex elsewhere. */
+  --ink:     #16241C;
+  --paper:   #EDF0EC;
+  --surface: #FFFFFF;
+  --line:    #D3DBD4;
+  --gold:    #B8891B;
+  --green:   #2E7D4F;
+  --amber:   #C6761A;
+  --red:     #A32B21;
 
+  /* Back-compat alias for the old token name. */
+  --paper-raised: var(--surface);
+
+  /* ---- ink at reduced opacity -- text/fills that aren't full ink. */
   --ink-06: rgba(22, 36, 28, 0.06);
   --ink-10: rgba(22, 36, 28, 0.10);
   --ink-16: rgba(22, 36, 28, 0.16);
   --ink-30: rgba(22, 36, 28, 0.30);
   --ink-60: rgba(22, 36, 28, 0.64);
 
+  /* ---- semantic tint / border / ink triads, one per status colour. */
   --gold-bg: rgba(184, 137, 27, 0.14);
   --gold-border: rgba(184, 137, 27, 0.55);
   --gold-ink: #7A5A12;
 
   --green-bg: rgba(46, 125, 79, 0.12);
   --green-border: rgba(46, 125, 79, 0.5);
+  --green-ink: #1F5C39;
+
+  --amber-bg: rgba(198, 118, 26, 0.14);
+  --amber-border: rgba(198, 118, 26, 0.55);
+  --amber-ink: #8A5313;
 
   --red-bg: rgba(163, 43, 33, 0.10);
   --red-border: rgba(163, 43, 33, 0.5);
+  --red-ink: #7E2219;
+
+  /* ---- spacing scale (4px base) -- use these, not arbitrary rem values. */
+  --space-1: 0.25rem;  /* 4px */
+  --space-2: 0.5rem;   /* 8px */
+  --space-3: 0.75rem;  /* 12px */
+  --space-4: 1rem;     /* 16px */
+  --space-5: 1.25rem;  /* 20px */
+  --space-6: 1.5rem;   /* 24px */
+  --space-7: 2rem;     /* 32px */
+  --space-8: 2.5rem;   /* 40px */
 
   --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif;
   --radius: 10px;
+  --radius-sm: 6px;
+  --radius-pill: 999px;
+
+  /* Minimum hit area for any interactive control on a touch screen. */
+  --touch-min: 44px;
 }
 
-* { box-sizing: border-box; }
+*, *::before, *::after { box-sizing: border-box; }
 
 html, body {
   margin: 0;
@@ -43,49 +80,193 @@ body {
   font-family: var(--font-sans);
   font-variant-numeric: tabular-nums;
   -webkit-font-smoothing: antialiased;
-}
-
-/* Status badges -- the only place gold/green/red should appear as fills. */
-.badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35em;
-  padding: 0.22em 0.65em;
-  border-radius: 999px;
-  font-size: 0.78rem;
-  font-weight: 700;
   line-height: 1.5;
-  white-space: nowrap;
 }
-.badge-success { background: var(--green-bg); color: var(--green); border: 1px solid var(--green-border); }
-.badge-warning { background: var(--gold-bg); color: var(--gold-ink); border: 1px solid var(--gold-border); }
-.badge-danger  { background: var(--red-bg);  color: var(--red);  border: 1px solid var(--red-border); }
-.badge-neutral { background: var(--ink-06);  color: var(--ink-60); border: 1px solid var(--ink-10); }
 
-/* Callout boxes -- info/warning/error framing shared by all three screens. */
-.callout {
-  border-radius: var(--radius);
-  padding: 0.9rem 1rem;
-  border: 1px solid var(--ink-10);
-  background: var(--paper-raised);
+/* Belt-and-braces: numbers stay tabular even inside a component that
+   resets font-variant-numeric on itself. */
+.num, input[type="number"], input[type="tel"], td, th {
+  font-variant-numeric: tabular-nums;
 }
-.callout-success { background: var(--green-bg); border-color: var(--green-border); }
-.callout-warning { background: var(--gold-bg); border-color: var(--gold-border); }
-.callout-danger  { background: var(--red-bg);  border-color: var(--red-border); }
 
-/* Buttons -- green is the one and only "go" colour; ink/paper for
-   everything neutral; red only for a destructive/cancel action. */
+h1, h2, h3 { line-height: 1.25; margin: 0 0 var(--space-2); }
+p { margin: 0 0 var(--space-3); }
+a { color: var(--green); }
+
+/* ---------------------------------------------------------------------
+   Buttons -- gold is the one and only "primary/go" colour; ink/paper
+   for everything neutral; red only for a destructive action. Every
+   button meets the 44px touch-target minimum, phone or not.
+--------------------------------------------------------------------- */
 .btn {
   font-family: inherit;
   font-size: 1rem;
   font-weight: 600;
   border-radius: var(--radius);
-  padding: 0.7rem 1.1rem;
+  padding: 0.7rem 1.15rem;
+  min-height: var(--touch-min);
   border: 1px solid transparent;
   cursor: pointer;
   line-height: 1.2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5em;
+  transition: background-color 0.1s, border-color 0.1s;
 }
 .btn:disabled { cursor: default; opacity: 0.55; }
-.btn-primary { background: var(--green); color: var(--paper-raised); }
-.btn-secondary { background: var(--paper-raised); color: var(--ink); border-color: var(--ink-16); }
-.btn-danger { background: var(--paper-raised); color: var(--red); border-color: var(--red-border); }
+.btn-primary { background: var(--gold); color: var(--surface); }
+.btn-primary:hover:not(:disabled) { background: #A47A17; }
+.btn-secondary { background: var(--surface); color: var(--ink); border-color: var(--line); }
+.btn-secondary:hover:not(:disabled) { border-color: var(--ink-30); }
+.btn-danger { background: var(--surface); color: var(--red); border-color: var(--red-border); }
+.btn-danger:hover:not(:disabled) { background: var(--red-bg); }
+.btn-block { width: 100%; }
+.btn-sm { padding: 0.45rem 0.8rem; min-height: 36px; font-size: 0.88rem; }
+
+/* ---------------------------------------------------------------------
+   Status badges -- the only place gold/green/amber/red appear as fills.
+--------------------------------------------------------------------- */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+  padding: 0.22em 0.65em;
+  border-radius: var(--radius-pill);
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+.badge-success { background: var(--green-bg); color: var(--green-ink); border: 1px solid var(--green-border); }
+.badge-warning { background: var(--amber-bg); color: var(--amber-ink); border: 1px solid var(--amber-border); }
+.badge-danger  { background: var(--red-bg);  color: var(--red);  border: 1px solid var(--red-border); }
+.badge-neutral { background: var(--ink-06);  color: var(--ink-60); border: 1px solid var(--line); }
+
+/* ---------------------------------------------------------------------
+   Callouts -- info/warning/error framing shared by every screen.
+--------------------------------------------------------------------- */
+.callout {
+  border-radius: var(--radius);
+  padding: var(--space-4);
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+.callout-success { background: var(--green-bg); border-color: var(--green-border); }
+.callout-warning { background: var(--amber-bg); border-color: var(--amber-border); }
+.callout-danger  { background: var(--red-bg);  border-color: var(--red-border); }
+
+/* ---------------------------------------------------------------------
+   Cards, fields, inline field errors -- red text under the field that
+   is actually wrong, never one banner listing everything at once.
+--------------------------------------------------------------------- */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: var(--space-5);
+}
+
+label { display: block; font-weight: 600; font-size: 0.9rem; margin-bottom: var(--space-2); color: var(--ink); }
+
+input, select, textarea {
+  width: 100%;
+  font-family: inherit;
+  font-size: 1rem;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0.65rem 0.8rem;
+  min-height: var(--touch-min);
+}
+input:focus, select:focus, textarea:focus {
+  outline: 2px solid var(--gold);
+  outline-offset: 1px;
+  border-color: var(--gold);
+}
+input.err, select.err, textarea.err,
+input[aria-invalid="true"], select[aria-invalid="true"] {
+  border-color: var(--red);
+}
+input.err:focus, select.err:focus {
+  outline-color: var(--red);
+  border-color: var(--red);
+}
+input:disabled, select:disabled, textarea:disabled { opacity: 0.6; }
+
+.field { margin-bottom: var(--space-4); }
+.field-error {
+  display: block;
+  color: var(--red);
+  font-size: 0.82rem;
+  font-weight: 600;
+  margin-top: var(--space-1);
+}
+.field-hint {
+  display: block;
+  color: var(--ink-60);
+  font-size: 0.8rem;
+  margin-top: var(--space-1);
+}
+.req { color: var(--red); }
+
+/* ---------------------------------------------------------------------
+   Loading -- a small inline spinner for any async action, plus a
+   shimmering skeleton block for content still on its way in. Respects
+   reduced-motion.
+--------------------------------------------------------------------- */
+.spinner {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: kisan-spin 0.6s linear infinite;
+  vertical-align: -0.15em;
+}
+@keyframes kisan-spin { to { transform: rotate(360deg); } }
+
+.loading-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--ink-60);
+  font-size: 0.9rem;
+  padding: var(--space-4) 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner { animation: none; }
+}
+
+/* ---------------------------------------------------------------------
+   Empty states -- wherever a list can legitimately have nothing in it.
+--------------------------------------------------------------------- */
+.empty-state {
+  text-align: center;
+  padding: var(--space-7) var(--space-4);
+  color: var(--ink-60);
+  font-size: 0.9rem;
+}
+.empty-state .ic { font-size: 1.8rem; display: block; margin-bottom: var(--space-2); opacity: 0.55; }
+
+/* ---------------------------------------------------------------------
+   Tables -- scroll horizontally on a narrow screen instead of
+   squeezing columns unreadably. Wrap any <table> in .table-scroll.
+--------------------------------------------------------------------- */
+.table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+table { border-collapse: collapse; width: 100%; }
+th, td { text-align: left; padding: 0.55rem 0.65rem; border-bottom: 1px solid var(--line); font-size: 0.88rem; }
+th { color: var(--ink-60); font-weight: 600; font-size: 0.76rem; text-transform: uppercase; letter-spacing: 0.03em; white-space: nowrap; }
+tbody tr:last-child td { border-bottom: none; }
+
+/* ---------------------------------------------------------------------
+   A two-up responsive grid for form fields -- one column by default
+   (phone), two columns from tablet width up. Used by declaration.html.
+--------------------------------------------------------------------- */
+.field-grid { display: grid; grid-template-columns: 1fr; gap: var(--space-4); }
+@media (min-width: 768px) {
+  .field-grid-2 { grid-template-columns: 1fr 1fr; }
+}
