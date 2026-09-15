@@ -1,7 +1,7 @@
 'use strict';
 
 const crypto = require('crypto');
-const { computeDailyCapacity } = require('../src/capacityEngine');
+const { computeDailyCapacity, CONSTRAINT_ORDER } = require('../src/capacityEngine');
 const { YIELD_QUINTALS_PER_ACRE, BAGS_PER_QUINTAL, OVER_DECLARE_CAP_MULTIPLIER, KG_PER_BAG } = require('../src/constants');
 const { createRng } = require('./seed/random');
 const { generateVillageNames, generatePersonName, generateFatherName } = require('./seed/names');
@@ -15,12 +15,32 @@ const SEED = Number((args.find((a) => a.startsWith('--seed=')) || '--seed=42').s
 const DISTRICT = 'Medak';
 const STATE = 'Telangana';
 const SERVICE_DATES = 7; // seed a week of centre-day capacity
-const START_DATE = '2026-09-04';
+
+// Same IST-calendar-day convention as app.js's todayInIST -- declarations
+// have to start from the real "today" (not a fixed historical string) or
+// every seeded service date is already in the past by the time anyone
+// looks at the dashboard, and a farmer can't book against any of them
+// (validateBookingDate rejects a past date outright).
+const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+function todayInIST() {
+  return new Date(Date.now() + IST_OFFSET_MS).toISOString().slice(0, 10);
+}
+const START_DATE = todayInIST();
 
 // The district dashboard's gunny-cover figure needs real burn history --
-// completed lots with weighments -- for the 3 days before the dashboard
-// date, or its rolling burn rate has nothing to divide by. Backfilled
-// below, immediately before START_DATE.
+// completed lots with weighments -- for the BURN_RATE_WINDOW_DAYS
+// (dashboardService.js) calendar days before the dashboard date, or its
+// rolling burn rate has nothing to divide by. The dashboard defaults to
+// viewing *tomorrow* (START_DATE + 1) -- see dashboard.html's
+// todayPlusOne() -- so that window is [START_DATE-2, START_DATE+1):
+// START_DATE-2, START_DATE-1, and START_DATE itself. START_DATE can't be
+// backfilled here -- it's already the first day of the *future* declared
+// window from buildCentreDays, which owns that (centre, service_date)
+// pair in centre_day (UNIQUE(centre_id, service_date)) -- so only
+// BURN_HISTORY_DAYS-1 days actually get completed lots (see
+// buildBurnHistory, which scales each one up so the live 3-day average,
+// computed over 2 real days and one empty one, still lands where
+// intended rather than reading 1/3 low).
 const BURN_HISTORY_DAYS = 3;
 // The two busiest APMC mandis: sized (see buildBurnHistory) to have burned
 // through most of their gunny stock during a peak-season stretch, so they
@@ -349,18 +369,45 @@ function buildBookings(rng, centreDays, farmers) {
 // burn rate)
 // ---------------------------------------------------------------------------
 
-// Backfills BURN_HISTORY_DAYS days of completed lots (with weighments)
-// immediately before START_DATE, one synthetic centre_day per day per
-// centre. Sized backwards from each centre's already-generated
-// START_DATE+1 gunny stock, so the resulting days-of-cover lands where we
-// want it -- a couple of centres genuinely low, the rest comfortable --
-// rather than picking a burn number and hoping the ratio comes out right.
+// Excludes gunny -- the one constraint this function itself is about to
+// move -- from the "what could this centre physically process" figure.
+// The other five (weighbridge/hamali/truckEvacuation/yardSpace/
+// moistureTesting) are fixed infrastructure, unaffected by today's
+// leftover bag count, so they're the genuine, non-circular ceiling on
+// burn: a centre's throughput doesn't drop just because we're about to
+// declare it low on bags, and using totalCapacity itself here (which
+// already folds gunny in) would make the cap move every time gunny does.
+function nonGunnyCapacityBags(constraintBreakdown, bagsPerTruck) {
+  const lotsPerDay = Math.min(
+    ...CONSTRAINT_ORDER.filter((key) => key !== 'gunny').map((key) => constraintBreakdown[key])
+  );
+  return lotsPerDay * bagsPerTruck;
+}
+
+// Backfills completed lots (with weighments) for the BURN_HISTORY_DAYS-1
+// days that can actually carry them (see the comment on BURN_HISTORY_DAYS
+// above), one synthetic centre_day per day per centre.
+//
+// Burn is capped at nonGunnyCapacityBags -- a centre can never be shown
+// consuming more bags in a day than its declared infrastructure could
+// physically weigh/handle/evacuate, no matter how much gunny stock is on
+// hand. For the two AT_RISK centres, burn is set *near* that physical
+// ceiling (running flat out) and it's tomorrow's gunny stock that's sized
+// down from it afterwards -- not the other way around -- so days-of-cover
+// lands under the dashboard's 1.5-day alert without ever implying burn
+// the centre couldn't actually sustain. The declaration row (and its
+// already-computed centre_day capacity) is mutated in place so the
+// declaration screen, dashboard capacity figure and gunny-cover figure
+// all agree on the same lowered stock. Every other centre keeps its
+// original, generous gunny stock and just gets its burn capped the same
+// way, for a comfortable multi-day cushion.
+//
 // Bookings are real farmer-sized draws (same land-estimate math as
 // buildBookings), packed against a per-day target instead of a capacity
 // ceiling, and marked 'completed' with a same-day weighment whose net_kg
 // matches bags_reserved exactly (KG_PER_BAG), so gunny cover derived from
 // them is internally consistent top to bottom.
-function buildBurnHistory(rng, centres, centreDailyInputs, farmers) {
+function buildBurnHistory(rng, centres, centreDailyInputs, centreDays, farmers) {
   const candidates = rng.shuffle(farmers.filter((f) => f.landRecordId !== null));
   let cursor = 0;
 
@@ -370,30 +417,90 @@ function buildBurnHistory(rng, centres, centreDailyInputs, farmers) {
   const burnSummary = [];
 
   const tomorrow = addDays(START_DATE, 1);
+  // START_DATE itself can't carry a backfilled day (see the comment on
+  // BURN_HISTORY_DAYS) -- only this many days actually get real burn.
+  const BACKFILLABLE_DAYS = BURN_HISTORY_DAYS - 1;
 
   for (const centre of centres) {
     const tomorrowInput = centreDailyInputs.find((d) => d.centreId === centre.id && d.serviceDate === tomorrow);
-    const gunnyTomorrow = tomorrowInput.gunnyBagsAvailable;
+    const tomorrowCentreDay = centreDays.find((d) => d.centreId === centre.id && d.serviceDate === tomorrow);
+    const bagsPerTruck = tomorrowCentreDay.bagsPerTruck;
+    const physicalCapacityBags = nonGunnyCapacityBags(tomorrowCentreDay.constraintBreakdown, bagsPerTruck);
 
     const atRisk = AT_RISK_CENTRE_CODES.has(centre.code);
     // Comfortable margin under the dashboard's 1.5-day alert threshold --
-    // packing bookings against a target only approximates it, so this
-    // needs slack, not a target that grazes the boundary.
-    const targetCoverDays = atRisk ? rng.float(0.5, 1.1) : rng.float(3, 9);
-    const avgDailyBurn = Math.max(200, Math.round(gunnyTomorrow / targetCoverDays));
+    // packing bookings against a target only approximates it (farmer-sized
+    // draws, not exact amounts), so the AT_RISK ceiling stays well clear
+    // of 1.5 rather than grazing it -- 1.1 landed too close for some seeds.
+    const targetCoverDays = atRisk ? rng.float(0.4, 0.9) : rng.float(3, 9);
+
+    let avgDailyBurn;
+    if (atRisk) {
+      // Running near, but never over, physical capacity -- the whole
+      // reason this centre is at risk is that its stock can't keep up
+      // with what it's actually processing, not that it's processing an
+      // impossible amount.
+      avgDailyBurn = Math.max(200, Math.round(physicalCapacityBags * rng.float(0.85, 1.0)));
+      tomorrowInput.gunnyBagsAvailable = Math.max(0, Math.round(avgDailyBurn * targetCoverDays));
+
+      // Keeps the declaration screen, dashboard capacity figure, and
+      // gunny-cover figure consistent with the stock just lowered above --
+      // only the gunny input changed, so only the engine output for this
+      // one day needs recomputing.
+      const recomputed = computeDailyCapacity({
+        weighingMode: tomorrowInput.weighingMode,
+        weighbridgeOperatingMinutes: tomorrowInput.weighbridgeOperatingMinutes,
+        weighbridgeAvgCycleMinutes: tomorrowInput.weighbridgeAvgCycleMinutes ?? undefined,
+        secondsPerBag: tomorrowInput.secondsPerBag ?? undefined,
+        avgBagsPerLot: tomorrowInput.avgBagsPerLot ?? undefined,
+        hamaliGangCount: tomorrowInput.hamaliGangCount,
+        hamaliBagsPerGangPerDay: tomorrowInput.hamaliBagsPerGangPerDay,
+        bagsPerTruck: tomorrowInput.bagsPerTruck,
+        gunnyBagsAvailable: tomorrowInput.gunnyBagsAvailable,
+        truckEvacuationCapacity: tomorrowInput.truckEvacuationCapacity,
+        yardCapacityTonnes: tomorrowInput.yardCapacityTonnes - tomorrowInput.undispatchedTonnes,
+        avgTruckLoadTonnes: tomorrowInput.avgTruckLoadTonnes,
+        moistureMeterCount: tomorrowInput.moistureMeterCount,
+        moistureTestsPerMeterPerDay: tomorrowInput.moistureTestsPerMeterPerDay,
+      });
+      tomorrowCentreDay.totalCapacity = recomputed.totalCapacity;
+      tomorrowCentreDay.walkInReserved = recomputed.walkInReserved;
+      tomorrowCentreDay.bookableCapacity = recomputed.bookableCapacity;
+      tomorrowCentreDay.bagsCapacity = recomputed.bookableCapacity * bagsPerTruck;
+      tomorrowCentreDay.bindingConstraint = recomputed.bindingConstraint;
+      tomorrowCentreDay.constraintBreakdown = recomputed.constraints;
+    } else {
+      avgDailyBurn = Math.min(
+        physicalCapacityBags,
+        Math.max(200, Math.round(tomorrowInput.gunnyBagsAvailable / targetCoverDays))
+      );
+    }
+    const gunnyTomorrow = tomorrowInput.gunnyBagsAvailable;
+
+    // dashboardService.computeBurnRate divides by the full
+    // BURN_HISTORY_DAYS no matter how many of those days actually have
+    // rows (see the comment on BURN_HISTORY_DAYS) -- scale each
+    // backfilled day up so BACKFILLABLE_DAYS days of real burn, averaged
+    // over BURN_HISTORY_DAYS, still lands on avgDailyBurn live, not
+    // BACKFILLABLE_DAYS/BURN_HISTORY_DAYS of it. Still never above
+    // physical capacity for a single day, even after that scale-up.
+    const perBackfilledDayTarget = Math.min(
+      physicalCapacityBags,
+      Math.round((avgDailyBurn * BURN_HISTORY_DAYS) / BACKFILLABLE_DAYS)
+    );
 
     let totalBurned = 0;
 
-    for (let dayOffset = BURN_HISTORY_DAYS; dayOffset >= 1; dayOffset--) {
+    for (let dayOffset = BACKFILLABLE_DAYS; dayOffset >= 1; dayOffset--) {
       const serviceDate = addDays(START_DATE, -dayOffset);
-      const dailyTarget = jitterInt(rng, avgDailyBurn, 0.15);
+      const dailyTarget = Math.min(physicalCapacityBags, jitterInt(rng, perBackfilledDayTarget, 0.15));
       const centreDayId = uuid();
 
       let remainingTarget = dailyTarget;
       let sequence = 0;
       let dayBurned = 0;
 
-      while (cursor < candidates.length && remainingTarget > avgDailyBurn * 0.05) {
+      while (cursor < candidates.length && remainingTarget > dailyTarget * 0.05) {
         const farmer = candidates[cursor];
         const landEstimate = round(farmer.linkedExtentAcres * YIELD_QUINTALS_PER_ACRE, 2);
         const declaredQuantity = round(landEstimate * rng.float(0.7, 1.15), 2);
@@ -442,10 +549,10 @@ function buildBurnHistory(rng, centres, centreDailyInputs, farmers) {
         centreName: centre.name,
         centreCode: centre.code,
         serviceDate,
-        bagsPerTruck: SHARED_BASELINE.bagsPerTruck,
-        totalCapacity: Math.ceil(dayBurned / SHARED_BASELINE.bagsPerTruck),
+        bagsPerTruck,
+        totalCapacity: Math.ceil(dayBurned / bagsPerTruck),
         walkInReserved: 0,
-        bookableCapacity: Math.ceil(dayBurned / SHARED_BASELINE.bagsPerTruck),
+        bookableCapacity: Math.ceil(dayBurned / bagsPerTruck),
         bagsCapacity: dayBurned,
         bagsBooked: dayBurned,
         // Not really "gunny-bound" for every historical day -- these rows
@@ -502,6 +609,17 @@ async function writeToDatabase({ centres, centreDailyInputs, centreDays, landRec
 
   try {
     await client.query('BEGIN');
+
+    // Makes the seed idempotent -- re-running it (e.g. after CENTRES grew,
+    // or just to refresh service dates onto the real "today") otherwise
+    // dies on the first INSERT with a duplicate key on centres_code_key,
+    // since every centre code is fixed and ids are freshly generated each
+    // run. CASCADE clears every table that hangs off centres/land_records/
+    // farmers/employees transitively (centre_daily_inputs, centre_day,
+    // bookings, lot_weighments, and anything created by exercising the
+    // live app against a prior seed run, like j_forms) so nothing is left
+    // pointing at a row this run is about to replace.
+    await client.query('TRUNCATE TABLE centres, land_records, farmers, employees CASCADE');
 
     await batchInsert(
       client,
@@ -666,7 +784,7 @@ function printSummary({ centres, centreDays, landRecords, farmers, bookings, ove
   line(`\nBookings: ${bookings.length}`);
   line(`  Declared quantity > 1.3x land-record estimate: ${overDeclaredCount} (${((overDeclaredCount / bookings.length) * 100).toFixed(1)}%)`);
 
-  line(`\nBurn history backfill (${BURN_HISTORY_DAYS} days before ${START_DATE}), for the district dashboard's gunny cover:`);
+  line(`\nBurn history backfill (${BURN_HISTORY_DAYS - 1} real days, averaged over a ${BURN_HISTORY_DAYS}-day window ending ${START_DATE}, matching the live dashboard), for the district dashboard's gunny cover:`);
   for (const b of burnSummary) {
     const flag = b.daysOfCover !== null && b.daysOfCover < 1.5 ? '  [AT RISK]' : '';
     line(`    ${b.centreName.padEnd(24)} avg burn: ${String(b.avgDailyBurn).padStart(6)} bags/day   gunny (${addDays(START_DATE, 1)}): ${String(b.gunnyTomorrow).padStart(6)}   days of cover: ${b.daysOfCover}${flag}`);
@@ -694,6 +812,7 @@ async function main() {
     rng,
     centres,
     centreDailyInputs,
+    centreDays,
     farmers
   );
   const { bookings, overDeclaredCount } = buildBookings(rng, centreDays, farmers);

@@ -63,6 +63,10 @@ const ALERT_REASON_LABELS = {
   overbooked: 'Overbooked -- no bookable capacity left',
   low_bag_cover: 'Low gunny bag cover',
 };
+const DEFERRAL_REASON_LABELS = {
+  capacity_reduced: 'Capacity reduced since booking',
+};
+const CHANNEL_LABELS = { sms: 'SMS', ivr: 'IVR (voice)', app: 'App' };
 
 // Formats using the browser's local calendar date -- never toISOString(),
 // which converts to UTC and silently shifts the date for any timezone
@@ -75,10 +79,26 @@ function formatLocalDate(d) {
   return `${y}-${m}-${day}`;
 }
 
+function today() {
+  return formatLocalDate(new Date());
+}
+
 function todayPlusOne() {
   const d = new Date();
   d.setDate(d.getDate() + 1);
   return formatLocalDate(d);
+}
+
+function formatDate(value) {
+  if (!value) return null;
+  const d = new Date(`${value}T00:00:00`);
+  return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+function formatDateTime(value) {
+  if (!value) return null;
+  const d = new Date(value);
+  return d.toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
 }
 
 async function fetchJson(url, options) {
@@ -102,6 +122,17 @@ function coverCell(daysOfCover) {
   return h('span', { className: daysOfCover < 1.5 ? 'cover-low' : '' }, `${daysOfCover}d`);
 }
 
+// Every tied constraint is still in c.bindingConstraints (and the
+// declaration screen's own table shows the full breakdown) -- this is
+// just the compact label for a table cell, so beyond two it's summarised
+// rather than run on ("Weighing & Hamali gangs and 3 others") instead of
+// listing all five and pushing the row off the edge of the table.
+function formatBindingLabel(keys) {
+  const labels = keys.map((k) => CONSTRAINT_LABELS[k] || k);
+  if (labels.length <= 2) return labels.join(' & ');
+  return `${labels.slice(0, 2).join(' & ')} and ${labels.length - 2} others`;
+}
+
 function CentreGrid({ centres }) {
   if (centres.length === 0) {
     return h('div', { className: 'empty-state' },
@@ -118,8 +149,7 @@ function CentreGrid({ centres }) {
       )),
       h('tbody', null,
         centres.map((c) => {
-          const bindingLabel = (c.bindingConstraints || [c.bindingConstraint])
-            .map((k) => CONSTRAINT_LABELS[k] || k).join(' & ');
+          const bindingLabel = formatBindingLabel(c.bindingConstraints || [c.bindingConstraint]);
           const rowClasses = [c.atRisk ? 'at-risk' : '', c.overbooked ? 'overbooked' : ''].filter(Boolean).join(' ');
           return h('tr', { key: c.centreId, className: rowClasses },
             h('td', null, `${c.name} (${c.code})`),
@@ -241,12 +271,214 @@ function EvacuationBacklog({ rows }) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Nightly reallocation (on-demand run + result)
+// ---------------------------------------------------------------------------
+
+function AlternativeOffer({ alternative }) {
+  if (!alternative) return h('span', { style: { color: 'var(--ink-30)' } }, '—');
+  const { nextDateAtThisCentre, nearbyCentres } = alternative;
+  const parts = [];
+  if (nextDateAtThisCentre) {
+    parts.push(`Same centre, ${formatDate(nextDateAtThisCentre.date)} (${nextDateAtThisCentre.remainingSlots} slots)`);
+  }
+  if (nearbyCentres && nearbyCentres.length > 0) {
+    const nearest = nearbyCentres[0];
+    parts.push(`${nearest.name} (${nearest.distanceKm} km, ${nearest.remainingSlots} slots)`);
+  }
+  if (parts.length === 0) {
+    return h('span', { style: { color: 'var(--red)', fontSize: '0.82rem' } }, 'No alternative found nearby');
+  }
+  return h('div', null, parts.map((p, i) => h('div', { key: i, style: { fontSize: '0.82rem' } }, p)));
+}
+
+function DeferralsTable({ deferrals }) {
+  if (deferrals.length === 0) {
+    return h('div', { className: 'empty-state' }, h('span', { className: 'ic' }, '✓'), 'No bookings needed to be deferred.');
+  }
+  return h('div', { className: 'table-scroll' },
+    h('table', null,
+      h('thead', null, h('tr', null,
+        h('th', null, 'Farmer'), h('th', null, 'Centre'), h('th', null, 'Date'),
+        h('th', null, 'Score'), h('th', null, 'Reason'), h('th', null, 'Alternative offered')
+      )),
+      h('tbody', null,
+        deferrals.map((d) => h('tr', { key: d.bookingId },
+          h('td', null,
+            d.farmerName || '(unknown)',
+            d.farmerPhone && h('div', { style: { fontSize: '0.75rem', color: 'var(--ink-60)' } }, d.farmerPhone)
+          ),
+          h('td', null, `${d.centreName || '—'}${d.centreCode ? ` (${d.centreCode})` : ''}`),
+          h('td', null, formatDate(d.date)),
+          h('td', { className: 'num' }, d.score),
+          h('td', null, h('span', { className: 'badge badge-warning' }, DEFERRAL_REASON_LABELS[d.reason] || d.reason)),
+          h('td', null, h(AlternativeOffer, { alternative: d.alternative }))
+        ))
+      )
+    )
+  );
+}
+
+function NoShowTable({ rows }) {
+  if (rows.length === 0) {
+    return h('div', { className: 'empty-state' }, h('span', { className: 'ic' }, '🚪'), "No no-shows to release for this run's date.");
+  }
+  return h('div', { className: 'table-scroll' },
+    h('table', null,
+      h('thead', null, h('tr', null, h('th', null, 'Farmer'), h('th', null, 'Centre'), h('th', null, 'Bags released'))),
+      h('tbody', null,
+        rows.map((r) => h('tr', { key: r.bookingId },
+          h('td', null, r.farmerName || '(unknown)'),
+          h('td', null, `${r.centreName || '—'}${r.centreCode ? ` (${r.centreCode})` : ''}`),
+          h('td', { className: 'num' }, r.bagsReleased)
+        ))
+      )
+    )
+  );
+}
+
+function RecomputedCapacityTable({ rows }) {
+  if (rows.length === 0) {
+    return h('div', { className: 'empty-state' }, h('span', { className: 'ic' }, '📋'), 'No centres had declared inputs to recompute.');
+  }
+  return h('div', { className: 'table-scroll' },
+    h('table', null,
+      h('thead', null, h('tr', null,
+        h('th', null, 'Centre'), h('th', null, 'Date'), h('th', null, 'Total capacity'),
+        h('th', null, 'Bookable'), h('th', null, 'Binding constraint')
+      )),
+      h('tbody', null,
+        rows.map((u, i) => h('tr', { key: i },
+          h('td', null, `${u.centreName || '—'}${u.centreCode ? ` (${u.centreCode})` : ''}`),
+          h('td', null, formatDate(u.date)),
+          h('td', { className: 'num' }, u.totalCapacity),
+          h('td', { className: 'num' }, u.bookableCapacity),
+          h('td', null, CONSTRAINT_LABELS[u.bindingConstraint] || u.bindingConstraint)
+        ))
+      )
+    )
+  );
+}
+
+// The on-demand equivalent of the cron-triggered nightly job (see
+// reallocationCli.js) -- otherwise there was no way to actually show this,
+// the project's core demonstration, without waiting for a real night to
+// pass. `date` plays the role of "today" in the job itself: its no-shows
+// are released, and D+1..D+7 are recomputed and, wherever now over
+// capacity, reallocated.
+function ReallocationPanel({ onApplied }) {
+  const [date, setDate] = React.useState(today());
+  const [running, setRunning] = React.useState(false);
+  const [result, setResult] = React.useState(null);
+  const [error, setError] = React.useState(null);
+
+  async function run() {
+    setRunning(true);
+    setError(null);
+    try {
+      const body = await fetchJson('/api/admin/run-reallocation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date }),
+      });
+      setResult(body);
+      onApplied(); // the run just changed real capacity/booking state -- refresh the views built on it
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  return h('div', null,
+    h('p', { style: { fontSize: '0.85rem', color: 'var(--ink-60)', marginTop: 0, marginBottom: 'var(--space-4)' } },
+      "Runs the same job a nightly cron trigger runs automatically -- releases this date's no-shows, recomputes capacity for the following 7 days, and defers the lowest-priority bookings wherever demand now exceeds it. Safe to re-run: an already-released no-show or already-deferred booking is left alone."
+    ),
+    h('div', { className: 'date-row', style: { marginBottom: 0 } },
+      h('label', null, 'Run as of'),
+      h('input', { type: 'date', value: date, max: today(), onChange: (e) => setDate(e.target.value) }),
+      h('button', { className: 'btn btn-primary btn-sm', onClick: run, disabled: running },
+        running && h('span', { className: 'spinner' }),
+        running ? 'Running…' : 'Run nightly reallocation'
+      )
+    ),
+
+    error && h('div', { className: 'callout callout-danger', style: { marginTop: 'var(--space-4)' } }, error),
+
+    result && h('div', { style: { marginTop: 'var(--space-5)' } },
+      h('div', { className: 'stat-grid', style: { marginBottom: 'var(--space-5)' } },
+        h(StatCard, { value: result.centreDayUpserts.length, label: 'Centre-days recomputed' }),
+        h(StatCard, { value: result.noShowReleases.length, label: 'No-shows released' }),
+        h(StatCard, { value: result.deferrals.length, label: 'Bookings deferred', risk: result.deferrals.length > 0 }),
+        h(StatCard, { value: result.notifications.length, label: 'Notifications queued' })
+      ),
+
+      h('h3', { style: { fontSize: '0.92rem', margin: '0 0 var(--space-2)' } }, 'Deferred bookings -- who, why, and their alternative'),
+      h(DeferralsTable, { deferrals: result.deferrals }),
+
+      h('h3', { style: { fontSize: '0.92rem', margin: 'var(--space-5) 0 var(--space-2)' } }, 'No-shows released'),
+      h(NoShowTable, { rows: result.noShowReleases }),
+
+      h('h3', { style: { fontSize: '0.92rem', margin: 'var(--space-5) 0 var(--space-2)' } }, 'Recomputed capacity (D+1 .. D+7)'),
+      h(RecomputedCapacityTable, { rows: result.centreDayUpserts }),
+
+      result.ewmaUpdates.length > 0 && h('div', null,
+        h('h3', { style: { fontSize: '0.92rem', margin: 'var(--space-5) 0 var(--space-2)' } }, "Service-time updates (today's completed lots)"),
+        h('ul', { style: { margin: 0, paddingLeft: '1.1rem', fontSize: '0.85rem' } },
+          result.ewmaUpdates.map((e, i) => h('li', { key: i, style: { marginBottom: 'var(--space-1)' } },
+            `${e.centreName || '—'}${e.centreCode ? ` (${e.centreCode})` : ''}: ${e.newEwmaMinutes} min/lot`
+          ))
+        )
+      )
+    )
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Messages (queued notifications)
+// ---------------------------------------------------------------------------
+
+function MessagesPanel({ messages, loading, error, onRefresh }) {
+  return h('div', null,
+    h('div', { style: { display: 'flex', justifyContent: 'flex-end', marginBottom: 'var(--space-3)' } },
+      h('button', { className: 'btn btn-secondary btn-sm', onClick: onRefresh, disabled: loading },
+        loading && h('span', { className: 'spinner' }),
+        loading ? 'Loading…' : 'Refresh'
+      )
+    ),
+    error && h('div', { className: 'callout callout-danger', style: { marginBottom: 'var(--space-4)' } }, error),
+    loading && !messages && h('div', { className: 'loading-row' }, h('span', { className: 'spinner' }), 'Loading messages…'),
+    messages && messages.length === 0 && h('div', { className: 'empty-state' },
+      h('span', { className: 'ic' }, '📭'), 'No messages queued yet.'
+    ),
+    messages && messages.length > 0 && h('div', { className: 'table-scroll' },
+      h('table', null,
+        h('thead', null, h('tr', null,
+          h('th', null, 'Farmer'), h('th', null, 'Channel'), h('th', null, 'Message'), h('th', null, 'Status'), h('th', null, 'Queued at')
+        )),
+        h('tbody', null,
+          messages.map((m) => h('tr', { key: m.id },
+            h('td', null, m.farmerName || m.mobile || '—'),
+            h('td', null, h('span', { className: 'badge badge-neutral' }, CHANNEL_LABELS[m.channel] || m.channel)),
+            h('td', null, m.body),
+            h('td', null, m.status),
+            h('td', null, formatDateTime(m.createdAt))
+          ))
+        )
+      )
+    )
+  );
+}
+
 function App() {
   const [session, setSession] = React.useState({ loading: true, name: null });
   const [date, setDate] = React.useState(todayPlusOne());
   const [dashboard, setDashboard] = React.useState(null);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState(null);
+  const [messages, setMessages] = React.useState(null);
+  const [messagesLoading, setMessagesLoading] = React.useState(false);
+  const [messagesError, setMessagesError] = React.useState(null);
 
   // District-wide view -- district_officer only. Anyone else (or anyone
   // not logged in) is sent to the shared login screen.
@@ -274,6 +506,26 @@ function App() {
   }, [date]);
 
   React.useEffect(() => { if (!session.loading) load(); }, [load, session.loading]);
+
+  const loadMessages = React.useCallback(async () => {
+    setMessagesLoading(true);
+    setMessagesError(null);
+    try {
+      const body = await fetchJson('/api/admin/messages');
+      setMessages(body.messages);
+    } catch (err) {
+      setMessagesError(err.message);
+    } finally {
+      setMessagesLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => { if (!session.loading) loadMessages(); }, [loadMessages, session.loading]);
+
+  // A reallocation run changes real capacity/booking state (and queues new
+  // notifications) -- refresh both views built on it rather than leaving
+  // them showing what was true before the run.
+  const onReallocationApplied = React.useCallback(() => { load(); loadMessages(); }, [load, loadMessages]);
 
   async function logout() {
     await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
@@ -334,6 +586,16 @@ function App() {
     dashboard && h('section', null,
       h('h2', null, 'Evacuation backlog'),
       h(EvacuationBacklog, { rows: dashboard.evacuationBacklog })
+    ),
+
+    h('section', null,
+      h('h2', null, 'Run nightly reallocation'),
+      h(ReallocationPanel, { onApplied: onReallocationApplied })
+    ),
+
+    h('section', null,
+      h('h2', null, 'Messages'),
+      h(MessagesPanel, { messages, loading: messagesLoading, error: messagesError, onRefresh: loadMessages })
     )
   );
 }

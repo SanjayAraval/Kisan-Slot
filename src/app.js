@@ -10,6 +10,7 @@ const { createDeclarationRoutes } = require('./declarationRoutes');
 const { createDashboardRoutes } = require('./dashboardRoutes');
 const { createFarmerRoutes } = require('./farmerRoutes');
 const { createAuthRoutes } = require('./authRoutes');
+const { createAdminRoutes } = require('./adminRoutes');
 const { requireAuth } = require('./authMiddleware');
 const { validateQuantity, validateBookingDate } = require('../public/validation');
 
@@ -168,6 +169,7 @@ function createApp(pool, { now = todayInIST } = {}) {
   app.use('/api', createDeclarationRoutes(pool));
   app.use('/api', createDashboardRoutes(pool));
   app.use('/api', createFarmerRoutes(pool));
+  app.use('/api', createAdminRoutes(pool));
 
   // Catch-all for anything a route didn't already turn into a specific,
   // farmer-facing status (404/409/400 etc). Never forwards the raw error
