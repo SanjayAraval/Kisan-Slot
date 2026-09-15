@@ -253,7 +253,9 @@ describe('POST /api/bookings', () => {
     // Same centre, next day: plenty of room.
     await insertDailyInputs(pool, { centreId, serviceDate: NEXT_DATE });
     // A nearby centre (within 25km) with room today.
-    const nearbyId = await insertCentre(pool, { name: 'Nearby Centre', code: 'NEAR-01', lat: 18.05, lng: 78.05 });
+    const nearbyId = await insertCentre(pool, {
+      name: 'Nearby Centre', nameHi: 'निकट केंद्र', nameTe: 'సమీప కేంద్రం', code: 'NEAR-01', lat: 18.05, lng: 78.05,
+    });
     await insertDailyInputs(pool, { centreId: nearbyId, serviceDate: DATE });
     // A far centre (>25km) with room today -- must NOT show up.
     const farId = await insertCentre(pool, { name: 'Far Centre', code: 'FAR-01', lat: 19.5, lng: 79.5 });
@@ -273,6 +275,10 @@ describe('POST /api/bookings', () => {
     const nearbyCodes = res.body.alternatives.nearbyCentres.map((c) => c.code);
     expect(nearbyCodes).toContain('NEAR-01');
     expect(nearbyCodes).not.toContain('FAR-01');
+
+    const nearby = res.body.alternatives.nearbyCentres.find((c) => c.code === 'NEAR-01');
+    expect(nearby.nameHi).toBe('निकट केंद्र');
+    expect(nearby.nameTe).toBe('సమీప కేంద్రం');
 
     const bookings = await pool.query('SELECT * FROM bookings');
     expect(bookings.rowCount).toBe(0);

@@ -27,12 +27,15 @@ async function insertEmployee(pool, overrides = {}) {
 
 async function insertCentre(pool, overrides = {}) {
   const id = overrides.id || uuid();
+  const name = overrides.name || 'Test Centre';
   await pool.query(
-    `INSERT INTO centres (id, name, code, centre_type, district, state, latitude, longitude)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+    `INSERT INTO centres (id, name, name_hi, name_te, code, centre_type, district, state, latitude, longitude)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
     [
       id,
-      overrides.name || 'Test Centre',
+      name,
+      overrides.nameHi || name,
+      overrides.nameTe || name,
       overrides.code || `TEST-${id.slice(0, 8)}`,
       overrides.centreType || 'apmc_mandi',
       overrides.district || 'Medak',

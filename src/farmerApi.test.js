@@ -98,7 +98,7 @@ describe('GET /api/farmers/:id', () => {
 
 describe('GET /api/farmers/:id/status', () => {
   async function setupBookedLot(pool) {
-    const centreId = await insertCentre(pool, { code: 'MDK-TEST-01' });
+    const centreId = await insertCentre(pool, { code: 'MDK-TEST-01', nameHi: 'मेडक टेस्ट केंद्र', nameTe: 'మెదక్ టెస్ట్ కేంద్రం' });
     await insertDailyInputs(pool, { centreId, serviceDate: DATE });
     const centreDayId = await insertCentreDay(pool, { centreId, serviceDate: DATE, bagsCapacity: 4800, bagsBooked: 100 });
     const farmerId = await insertFarmerWithLand(pool, { extentAcres: 5 });
@@ -129,6 +129,8 @@ describe('GET /api/farmers/:id/status', () => {
     expect(res.status).toBe(200);
     expect(res.body.booking.token).toBe(TOKEN);
     expect(res.body.booking.centreCode).toBe('MDK-TEST-01');
+    expect(res.body.booking.centreNameHi).toBe('मेडक टेस्ट केंद्र');
+    expect(res.body.booking.centreNameTe).toBe('మెదక్ టెస్ట్ కేంద్రం');
     expect(res.body.stages.map((s) => s.done)).toEqual([false, false, false, false, false, false]);
     expect(res.body.moisture).toBeNull();
     expect(res.body.weighment).toBeNull();

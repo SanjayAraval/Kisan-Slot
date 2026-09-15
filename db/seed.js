@@ -121,6 +121,8 @@ function buildCentres(rng) {
     return {
       id: uuid(),
       name: profile.name,
+      nameHi: profile.nameHi,
+      nameTe: profile.nameTe,
       code: profile.code,
       centreType: profile.centreType,
       weighingMode: profile.weighingMode,
@@ -504,9 +506,9 @@ async function writeToDatabase({ centres, centreDailyInputs, centreDays, landRec
     await batchInsert(
       client,
       'centres',
-      ['id', 'name', 'code', 'centre_type', 'district', 'state', 'latitude', 'longitude'],
+      ['id', 'name', 'name_hi', 'name_te', 'code', 'centre_type', 'district', 'state', 'latitude', 'longitude'],
       centres,
-      (c) => [c.id, c.name, c.code, c.centreType, DISTRICT, STATE, c.lat, c.lng]
+      (c) => [c.id, c.name, c.nameHi, c.nameTe, c.code, c.centreType, DISTRICT, STATE, c.lat, c.lng]
     );
 
     await batchInsert(

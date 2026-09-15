@@ -343,10 +343,34 @@ describe('POST /api/farmers/register', () => {
       const { app } = setup();
       const agent = await verifiedRegAgent(app, '9876500018');
 
-      const res = await agent
+      const tooShort = await agent
         .post('/api/farmers/register')
         .send({ name: 'Short Account', mobile: '9876500018', bankAccountNumber: '12345' });
-      expect(res.status).toBe(400);
+      expect(tooShort.status).toBe(400);
+      expect(tooShort.body.errors.join(' ')).toMatch(/9-18/);
+
+      const agent2 = await verifiedRegAgent(app, '9876500021');
+      const tooLong = await agent2
+        .post('/api/farmers/register')
+        .send({ name: 'Long Account', mobile: '9876500021', bankAccountNumber: '12345678901234567890' }); // 20 digits
+      expect(tooLong.status).toBe(400);
+      expect(tooLong.body.errors.join(' ')).toMatch(/9-18/);
+    });
+
+    test('accepts a bank account number at each boundary (9 and 18 digits)', async () => {
+      const { app } = setup();
+
+      const agentMin = await verifiedRegAgent(app, '9876500022');
+      const min = await agentMin
+        .post('/api/farmers/register')
+        .send({ name: 'Min Account', mobile: '9876500022', bankAccountNumber: '123456789' }); // 9 digits
+      expect(min.status).toBe(201);
+
+      const agentMax = await verifiedRegAgent(app, '9876500023');
+      const max = await agentMax
+        .post('/api/farmers/register')
+        .send({ name: 'Max Account', mobile: '9876500023', bankAccountNumber: '123456789012345678' }); // 18 digits
+      expect(max.status).toBe(201);
     });
 
     test('uppercases a lowercase IFSC before storing, and rejects a malformed one', async () => {

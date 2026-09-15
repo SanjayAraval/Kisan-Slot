@@ -207,9 +207,10 @@ async function findNearbyCentresWithRoom(pool, { centreId, date, bagsNeeded }) {
   const origin = originResult.rows[0];
   if (!origin) return [];
 
-  const othersResult = await pool.query('SELECT id, name, code, latitude, longitude FROM centres WHERE id != $1', [
-    centreId,
-  ]);
+  const othersResult = await pool.query(
+    'SELECT id, name, name_hi, name_te, code, latitude, longitude FROM centres WHERE id != $1',
+    [centreId]
+  );
 
   const candidates = [];
   for (const other of othersResult.rows) {
@@ -226,6 +227,8 @@ async function findNearbyCentresWithRoom(pool, { centreId, date, bagsNeeded }) {
     candidates.push({
       centreId: other.id,
       name: other.name,
+      nameHi: other.name_hi,
+      nameTe: other.name_te,
       code: other.code,
       distanceKm: round(distanceKm, 1),
       remainingBags: round(remainingBags, 2),

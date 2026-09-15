@@ -85,7 +85,8 @@ async function loadLatestBooking(pool, farmerId) {
   const result = await pool.query(
     `SELECT b.id, b.token, b.status, b.declared_quantity_quintals, b.bags_reserved,
             b.booked_at, b.checked_in_at, b.completed_at,
-            cd.service_date, c.id AS centre_id, c.name AS centre_name, c.code AS centre_code
+            cd.service_date, c.id AS centre_id, c.name AS centre_name,
+            c.name_hi AS centre_name_hi, c.name_te AS centre_name_te, c.code AS centre_code
      FROM bookings b
      JOIN centre_day cd ON cd.id = b.centre_day_id
      JOIN centres c ON c.id = cd.centre_id
@@ -152,6 +153,8 @@ async function loadLotStatus(pool, farmerId) {
       status: booking.status,
       centreId: booking.centre_id,
       centreName: booking.centre_name,
+      centreNameHi: booking.centre_name_hi,
+      centreNameTe: booking.centre_name_te,
       centreCode: booking.centre_code,
       serviceDate: toDateString(booking.service_date),
       declaredQuantityQuintals: Number(booking.declared_quantity_quintals),

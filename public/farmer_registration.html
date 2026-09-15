@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Farmer Registration — Procurement Platform</title>
+<title>Kisan Slot — Farmer Registration</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Mukta:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -218,7 +218,7 @@
       <div class="brand">
         <div class="leaf">🌾</div>
         <div>
-          <h1 data-t="appName">Kisan Procurement Portal</h1>
+          <h1 data-t="appName">Kisan Slot</h1>
           <p data-t="appSub">Farmer registration for MSP sale</p>
         </div>
       </div>
@@ -367,11 +367,11 @@
     <div class="assist-banner">👥 <span data-t="assistBanner4">Operator mode — enter the farmer's bank account</span></div>
 
     <label data-t="l_acc">Account number <span class="req">*</span></label>
-    <input id="acc" inputmode="numeric" maxlength="18" placeholder="Bank account number" oninput="digitsOnly(this)">
-    <div class="errmsg" data-t="e_acc">Account number is required</div>
+    <input id="acc" inputmode="numeric" maxlength="25" placeholder="Bank account number" oninput="onAccInput(this)">
+    <div class="errmsg" data-t="e_acc">Enter a valid 9-18 digit account number</div>
 
     <label data-t="l_acc2">Re-enter account number <span class="req">*</span></label>
-    <input id="acc2" inputmode="numeric" maxlength="18" placeholder="Confirm account number" oninput="digitsOnly(this)">
+    <input id="acc2" inputmode="numeric" maxlength="25" placeholder="Confirm account number" oninput="digitsOnly(this)">
     <div class="errmsg" data-t="e_acc2">Account numbers do not match</div>
 
     <label data-t="l_ifsc">IFSC code <span class="req">*</span></label>
@@ -411,7 +411,7 @@
 /* ---------- Bilingual strings ---------- */
 const T = {
   en:{
-    appName:"Kisan Procurement Portal", appSub:"Farmer registration for MSP sale",
+    appName:"Kisan Slot", appSub:"Farmer registration for MSP sale",
     assistLabel:"Assisted registration (operator mode)",
     assistNote:"For a CSC/centre operator registering on a farmer's behalf",
     assistBanner:"Operator mode — the code still goes to the farmer's own number",
@@ -444,8 +444,9 @@ const T = {
     l_landsize:"Land size (acres)",e_landsize:"Enter land size in acres",
     l_qty:"Quantity to sell (quintals)",h_qty:"Sanity-checked against land size to prevent over-declaration",
     e_qty:"Quantity looks too high for this land size",
+    unitAcres:"ac",unitQuintal:"q",
     t4:"Bank details",d4:"Where MSP payment will be credited",
-    l_acc:"Account number",e_acc:"Account number is required",
+    l_acc:"Account number",e_acc:"Enter a valid 9-18 digit account number",
     l_acc2:"Re-enter account number",e_acc2:"Account numbers do not match",
     l_ifsc:"IFSC code",h_ifsc:"Aadhaar must be linked to this account for PFMS payment",
     e_ifsc:"Enter a valid IFSC (e.g. SBIN0001234)",
@@ -465,7 +466,7 @@ const T = {
     err_register:"Registration failed. Please try again."
   },
   hi:{
-    appName:"किसान खरीद पोर्टल", appSub:"MSP बिक्री हेतु किसान पंजीकरण",
+    appName:"किसान स्लॉट", appSub:"MSP बिक्री हेतु किसान पंजीकरण",
     assistLabel:"सहायता पंजीकरण (ऑपरेटर मोड)",
     assistNote:"CSC/केंद्र ऑपरेटर द्वारा किसान की ओर से पंजीकरण",
     assistBanner:"ऑपरेटर मोड — कोड किसान के अपने नंबर पर ही जाएगा",
@@ -498,8 +499,9 @@ const T = {
     l_landsize:"भूमि का आकार (एकड़)",e_landsize:"एकड़ में भूमि का आकार दर्ज करें",
     l_qty:"बेचने की मात्रा (क्विंटल)",h_qty:"अधिक घोषणा रोकने हेतु भूमि आकार से जाँच",
     e_qty:"इस भूमि आकार के लिए मात्रा बहुत अधिक लगती है",
+    unitAcres:"एकड़",unitQuintal:"क्विंटल",
     t4:"बैंक विवरण",d4:"जहाँ MSP भुगतान जमा होगा",
-    l_acc:"खाता नंबर",e_acc:"खाता नंबर आवश्यक है",
+    l_acc:"खाता नंबर",e_acc:"मान्य 9-18 अंकों का खाता नंबर दर्ज करें",
     l_acc2:"खाता नंबर पुनः दर्ज करें",e_acc2:"खाता नंबर मेल नहीं खाते",
     l_ifsc:"IFSC कोड",h_ifsc:"PFMS भुगतान हेतु आधार इस खाते से लिंक होना चाहिए",
     e_ifsc:"वैध IFSC दर्ज करें (उदा. SBIN0001234)",
@@ -584,6 +586,14 @@ function decimalOnly(el){el.value=el.value.replace(/[^\d.]/g,'').replace(/(\..*)
 // by KisanValidation.normalizeMobile before validating or sending.
 function mobileChars(el){el.value=el.value.replace(/[^\d+\s-]/g,'')}
 function setErr(id,on){document.getElementById(id).classList.toggle('err',on);return !on}
+// Live feedback as the account number is typed -- input isn't capped at 18
+// digits (maxlength is deliberately looser) so going over the limit shows
+// an error immediately instead of just silently dropping keystrokes.
+function onAccInput(el){
+  digitsOnly(el);
+  if(!el.value){ setErr('acc',false); return; }
+  setErr('acc', !!KisanValidation.validateBankAccount(el.value));
+}
 function otpHop(el,i){
   el.value=el.value.replace(/\D/g,'');
   const inputs=document.querySelectorAll('.otp-inputs input');
@@ -730,8 +740,8 @@ function buildReview(){
     ['rv_place',val('village')+' / '+val('district')],
     ['rv_crop', T[lang]['opt_'+(val('crop')||'').toLowerCase()]||val('crop')],
     ['rv_khasra',val('khasra')],
-    ['rv_land',val('landsize')+' ac'],
-    ['rv_qty',val('qty')+' q'],
+    ['rv_land',val('landsize')+' '+t('unitAcres')],
+    ['rv_qty',val('qty')+' '+t('unitQuintal')],
     ['rv_bank','••••'+val('acc').slice(-4)],
     ['rv_ifsc',val('ifsc')]
   ];

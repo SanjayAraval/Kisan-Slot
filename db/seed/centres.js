@@ -29,6 +29,8 @@ const SHARED_BASELINE = {
 const CENTRES = [
   {
     name: 'Medak APMC Mandi',
+    nameHi: 'मेडक एपीएमसी मंडी',
+    nameTe: 'మెదక్ ఏపీఎంసీ మండి',
     code: 'MDK-APMC-01',
     centreType: 'apmc_mandi',
     weighingMode: 'weighbridge',
@@ -39,6 +41,8 @@ const CENTRES = [
   },
   {
     name: 'Narsapur APMC Mandi',
+    nameHi: 'नरसापुर एपीएमसी मंडी',
+    nameTe: 'నర్సాపూర్ ఏపీఎంసీ మండి',
     code: 'MDK-APMC-02',
     centreType: 'apmc_mandi',
     weighingMode: 'weighbridge',
@@ -49,6 +53,8 @@ const CENTRES = [
   },
   {
     name: 'Ramayampet APMC Mandi',
+    nameHi: 'रामायमपेट एपीएमसी मंडी',
+    nameTe: 'రామాయంపేట్ ఏపీఎంసీ మండి',
     code: 'MDK-APMC-03',
     centreType: 'apmc_mandi',
     weighingMode: 'weighbridge',
@@ -59,6 +65,8 @@ const CENTRES = [
   },
   {
     name: 'Toopran PACS Centre',
+    nameHi: 'टूपरान पैक्स केंद्र',
+    nameTe: 'టూప్రాన్ పాక్స్ కేంద్రం',
     code: 'MDK-PACS-01',
     centreType: 'pacs',
     weighingMode: 'platform',
@@ -69,6 +77,8 @@ const CENTRES = [
   },
   {
     name: 'Chegunta PACS Centre',
+    nameHi: 'चेगुंटा पैक्स केंद्र',
+    nameTe: 'చేగుంట పాక్స్ కేంద్రం',
     code: 'MDK-PACS-02',
     centreType: 'pacs',
     weighingMode: 'platform',
@@ -79,6 +89,8 @@ const CENTRES = [
   },
   {
     name: 'Yeldurthy PACS Centre',
+    nameHi: 'येलदुर्थी पैक्स केंद्र',
+    nameTe: 'ఎల్దుర్తి పాక్స్ కేంద్రం',
     code: 'MDK-PACS-03',
     centreType: 'pacs',
     weighingMode: 'platform',
@@ -89,6 +101,8 @@ const CENTRES = [
   },
   {
     name: 'Shivampet IKP Centre',
+    nameHi: 'शिवमपेट आईकेपी केंद्र',
+    nameTe: 'శివంపేట్ ఐకేపీ కేంద్రం',
     code: 'MDK-IKP-01',
     centreType: 'ikp',
     weighingMode: 'platform',
@@ -99,6 +113,8 @@ const CENTRES = [
   },
   {
     name: 'Kowdipally IKP Centre',
+    nameHi: 'कौडीपल्ली आईकेपी केंद्र',
+    nameTe: 'కౌడిపల్లి ఐకేపీ కేంద్రం',
     code: 'MDK-IKP-02',
     centreType: 'ikp',
     weighingMode: 'platform',

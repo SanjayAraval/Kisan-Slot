@@ -12,7 +12,7 @@ const {
   insertLotWeighment,
   DAILY_INPUT_BASELINE,
 } = require('./testUtils/fixtures');
-const { districtOfficerAgent } = require('./testUtils/authTestHelpers');
+const { districtOfficerAgent, farmerAgent } = require('./testUtils/authTestHelpers');
 
 const DATE = '2026-09-06'; // dashboard date
 const BURN_DAYS = ['2026-09-03', '2026-09-04', '2026-09-05']; // the 3 days before DATE
@@ -164,4 +164,34 @@ describe('POST /api/dashboard/centres/:id/release-bags', () => {
 // expectations need updating too.
 test('fixture baseline assumption', () => {
   expect(DAILY_INPUT_BASELINE.bagsPerTruck).toBe(100);
+});
+
+// The dashboard link is hidden from a farmer's UI (farmer.html only ever
+// renders for a farmer session and has no link to it at all), but the
+// server is the actual authority -- confirms it refuses a farmer
+// regardless of what any client sends.
+describe('a farmer session cannot reach district-officer-only dashboard routes', () => {
+  test('GET /api/dashboard is refused', async () => {
+    const pool = createTestPool();
+    const app = createApp(pool);
+    const farmerId = await insertFarmerWithLand(pool, {});
+    const agent = farmerAgent(app, farmerId);
+
+    const res = await agent.get('/api/dashboard').query({ date: DATE });
+    expect(res.status).toBe(403);
+  });
+
+  test('POST /api/dashboard/centres/:id/release-bags is refused', async () => {
+    const pool = createTestPool();
+    const app = createApp(pool);
+    const centreId = await insertCentre(pool);
+    await insertDailyInputs(pool, { centreId, serviceDate: DATE });
+    const farmerId = await insertFarmerWithLand(pool, {});
+    const agent = farmerAgent(app, farmerId);
+
+    const res = await agent
+      .post(`/api/dashboard/centres/${centreId}/release-bags`)
+      .send({ date: DATE, additionalBags: 100 });
+    expect(res.status).toBe(403);
+  });
 });

@@ -270,10 +270,11 @@ function App() {
   return h('div', null,
     h('h1', null, "Tonight's Declaration"),
     h('p', { className: 'sub' }, "Declare tomorrow's operating inputs and see the recomputed capacity."),
-    h('p', { style: { fontSize: '0.85rem', marginTop: '-0.75rem', marginBottom: '0.4rem' } },
-      h('a', { href: '/dashboard.html', style: { color: 'var(--green)' } }, 'District officer dashboard →'),
-      ' · ',
-      h('a', { href: '/farmer.html', style: { color: 'var(--green)' } }, 'Farmer screen →')
+    // The dashboard is district_officer-only -- a centre_officer here
+    // would only ever hit its own redirect back to login. The farmer
+    // screen isn't linked at all: no officer role can use it.
+    session.role === 'district_officer' && h('p', { style: { fontSize: '0.85rem', marginTop: '-0.75rem', marginBottom: '0.4rem' } },
+      h('a', { href: '/dashboard.html', style: { color: 'var(--green)' } }, 'District officer dashboard →')
     ),
     h('p', { style: { fontSize: '0.8rem', color: 'var(--ink-60)', marginTop: 0, marginBottom: '1rem' } },
       `Logged in as ${session.name} (${session.role.replace('_', ' ')})`, ' · ',

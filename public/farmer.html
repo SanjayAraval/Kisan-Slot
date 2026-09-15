@@ -63,8 +63,6 @@ const TRANSLATIONS = {
   en: {
     appTitle: 'Kisan Slot',
     appSubtitle: 'Book your procurement slot and track your lot.',
-    navDeclaration: 'Officer declaration',
-    navDashboard: 'District dashboard',
     languageLabel: 'Language',
     searchLabel: 'Search your name or phone number',
     searchPlaceholder: 'e.g. Ravi or 98765...',
@@ -80,6 +78,8 @@ const TRANSLATIONS = {
     fieldVillage: 'Village',
     fieldLand: 'Land',
     fieldPermitted: 'Permitted this season',
+    unitAcres: 'ac',
+    unitQuintal: 'q',
     fieldBank: 'Bank account',
     tabBook: 'Book',
     tabStatus: 'Status',
@@ -164,8 +164,6 @@ const TRANSLATIONS = {
   hi: {
     appTitle: 'किसान स्लॉट',
     appSubtitle: 'अपनी खरीद स्लॉट बुक करें और अपने लॉट को ट्रैक करें।',
-    navDeclaration: 'अधिकारी घोषणा',
-    navDashboard: 'जिला डैशबोर्ड',
     languageLabel: 'भाषा',
     searchLabel: 'अपना नाम या फोन नंबर खोजें',
     searchPlaceholder: 'जैसे रवि या 98765...',
@@ -181,6 +179,8 @@ const TRANSLATIONS = {
     fieldVillage: 'गाँव',
     fieldLand: 'भूमि',
     fieldPermitted: 'इस सीजन अनुमत',
+    unitAcres: 'एकड़',
+    unitQuintal: 'क्विंटल',
     fieldBank: 'बैंक खाता',
     tabBook: 'बुक करें',
     tabStatus: 'स्थिति',
@@ -265,8 +265,6 @@ const TRANSLATIONS = {
   te: {
     appTitle: 'కిసాన్ స్లాట్',
     appSubtitle: 'మీ సేకరణ స్లాట్‌ను బుక్ చేయండి మరియు మీ లాట్‌ను ట్రాక్ చేయండి.',
-    navDeclaration: 'అధికారి ప్రకటన',
-    navDashboard: 'జిల్లా డాష్‌బోర్డ్',
     languageLabel: 'భాష',
     searchLabel: 'మీ పేరు లేదా ఫోన్ నంబర్ వెతకండి',
     searchPlaceholder: 'ఉదా. రవి లేదా 98765...',
@@ -282,6 +280,8 @@ const TRANSLATIONS = {
     fieldVillage: 'గ్రామం',
     fieldLand: 'భూమి',
     fieldPermitted: 'ఈ సీజన్‌లో అనుమతించబడింది',
+    unitAcres: 'ఎకరం',
+    unitQuintal: 'క్వింటాల్',
     fieldBank: 'బ్యాంక్ ఖాతా',
     tabBook: 'బుక్ చేయండి',
     tabStatus: 'స్థితి',
@@ -355,7 +355,7 @@ const TRANSLATIONS = {
     sectionDeductions: 'కోతలు',
     noDeductions: 'కోతలు లేవు.',
     totalDeductions: 'మొత్తం కోతలు',
-    netPayableLabel: 'నికర చెల్లింపు · {rate}/క్వి ప్రభావవంతమైనది (ఎంఎస్‌పి {msp}/క్వి)',
+    netPayableLabel: 'నికర చెల్లింపు · {rate}/క్వింటాల్ ప్రభావవంతమైనది (ఎంఎస్‌పి {msp}/క్వింటాల్)',
     couldNotLoadFarmer: 'రైతును లోడ్ చేయలేకపోయాము.',
     loadingYourDetails: 'మీ వివరాలు లోడ్ అవుతున్నాయి…',
     couldNotLoadStatus: 'స్థితిని లోడ్ చేయలేకపోయాము.',
@@ -381,6 +381,21 @@ const LangContext = createContext('en');
 function useT() {
   const lang = useContext(LangContext);
   return useMemo(() => (key, vars) => translate(lang, key, vars), [lang]);
+}
+
+function useLang() {
+  return useContext(LangContext);
+}
+
+// Centres carry a transliterated name per language (nameHi/nameTe) so a
+// Hindi or Telugu reader can identify their own centre -- falls back to
+// the English name for a language with no field, or a centre object that
+// hasn't loaded one yet (e.g. an older cached response).
+function centreDisplayName(centre, lang) {
+  if (!centre) return '';
+  if (lang === 'hi' && centre.nameHi) return centre.nameHi;
+  if (lang === 'te' && centre.nameTe) return centre.nameTe;
+  return centre.name;
 }
 
 // Persisted via the URL's ?lang= query param rather than any client-side
@@ -588,8 +603,8 @@ function FarmerProfileCard({ farmer }) {
     h(Row, { k: t('fieldName'), v: farmer.name }),
     h(Row, { k: t('fieldPhone'), v: farmer.phone }),
     h(Row, { k: t('fieldVillage'), v: farmer.village || '—' }),
-    h(Row, { k: t('fieldLand'), v: `${farmer.extentAcres} ac · Sy. ${farmer.surveyNumber}` }),
-    h(Row, { k: t('fieldPermitted'), v: `${farmer.permittedQuantityQuintals} q` }),
+    h(Row, { k: t('fieldLand'), v: `${farmer.extentAcres} ${t('unitAcres')} · Sy. ${farmer.surveyNumber}` }),
+    h(Row, { k: t('fieldPermitted'), v: `${farmer.permittedQuantityQuintals} ${t('unitQuintal')}` }),
     h(Row, { k: t('fieldBank'), v: farmer.bankAccountLast4 ? `•••• ${farmer.bankAccountLast4}` : '—' })
   );
 }
@@ -692,6 +707,7 @@ function AlternativeCard({ title, detail, onBook }) {
 
 function BookScreen({ farmer, centres, onSwitchTab }) {
   const t = useT();
+  const lang = useLang();
   const [quintals, setQuintals] = useState('');
   const [centreId, setCentreId] = useState(centres[0] ? centres[0].id : '');
   const [date, setDate] = useState(todayPlusOne());
@@ -760,7 +776,7 @@ function BookScreen({ farmer, centres, onSwitchTab }) {
         h(QRTicket, { booking: b, farmer }),
         h('div', { className: 'mt-3' },
           h(Card, null,
-            h(Row, { k: t('rowQuantity'), v: `${b.quintals} q` }),
+            h(Row, { k: t('rowQuantity'), v: `${b.quintals} ${t('unitQuintal')}` }),
             h(Row, { k: t('rowDate'), v: formatDate(b.date) }),
             h(Row, { k: t('rowSlotsLeft'), v: result.body.remainingSlots })
           )
@@ -806,7 +822,7 @@ function BookScreen({ farmer, centres, onSwitchTab }) {
       }),
       (alt.nearbyCentres || []).map((c) => h(AlternativeCard, {
         key: c.centreId,
-        title: t('kmAway', { name: c.name, km: c.distanceKm }),
+        title: t('kmAway', { name: centreDisplayName(c, lang), km: c.distanceKm }),
         detail: t('slotsOpenToday', { n: c.remainingSlots }),
         onBook: () => submit({ centreId: c.centreId }),
       })),
@@ -838,7 +854,7 @@ function BookScreen({ farmer, centres, onSwitchTab }) {
       h('div', { className: 'mb-4' },
         h(FieldLabel, { icon: 'fa-warehouse' }, t('fieldCentre')),
         h('select', { value: centreId, className: inputClass, onChange: (e) => setCentreId(e.target.value) },
-          centres.map((c) => h('option', { key: c.id, value: c.id }, `${c.name} (${c.code})`))
+          centres.map((c) => h('option', { key: c.id, value: c.id }, `${centreDisplayName(c, lang)} (${c.code})`))
         )
       ),
       h('div', null,
@@ -904,6 +920,7 @@ function Timeline({ stages }) {
 
 function StatusScreen({ farmer, onSwitchTab }) {
   const t = useT();
+  const lang = useLang();
   const [state, setState] = useState({ loading: true, data: null, notFound: false, error: null });
 
   useEffect(() => {
@@ -933,9 +950,12 @@ function StatusScreen({ farmer, onSwitchTab }) {
   return h('div', null,
     h(Card, null,
       h(Row, { k: t('rowToken'), v: booking.token }),
-      h(Row, { k: t('rowCentre'), v: `${booking.centreName} (${booking.centreCode})` }),
+      h(Row, {
+        k: t('rowCentre'),
+        v: `${centreDisplayName({ name: booking.centreName, nameHi: booking.centreNameHi, nameTe: booking.centreNameTe }, lang)} (${booking.centreCode})`,
+      }),
       h(Row, { k: t('rowDate'), v: formatDate(booking.serviceDate) }),
-      h(Row, { k: t('rowQuantity'), v: `${booking.declaredQuantityQuintals} q` })
+      h(Row, { k: t('rowQuantity'), v: `${booking.declaredQuantityQuintals} ${t('unitQuintal')}` })
     ),
     h(SectionHeading, { icon: 'fa-route' }, t('sectionProgress')),
     h(Card, null, h(Timeline, { stages })),
@@ -980,8 +1000,8 @@ function JFormScreen({ farmer, onSwitchTab }) {
     h(Card, null,
       h(Row, { k: t('rowJForm'), v: j.jFormNumber }),
       h(Row, { k: t('rowIssued'), v: formatDateTime(j.issuedAt) }),
-      h(Row, { k: t('rowNetWeight'), v: `${j.quintalsProcured} q` }),
-      h(Row, { k: t('rowMspRate'), v: `${formatINR(j.mspRate)}/q` }),
+      h(Row, { k: t('rowNetWeight'), v: `${j.quintalsProcured} ${t('unitQuintal')}` }),
+      h(Row, { k: t('rowMspRate'), v: `${formatINR(j.mspRate)}/${t('unitQuintal')}` }),
       h(Row, { k: t('rowGrossValue'), v: formatINR(j.grossAmount) })
     ),
     h(SectionHeading, { icon: 'fa-file-invoice-dollar' }, t('sectionDeductions')),
@@ -1078,14 +1098,12 @@ function AppBody() {
     );
   }
 
+  // This screen only ever renders for a logged-in farmer (see
+  // useFarmerSession above) -- a farmer can never use either officer-only
+  // page, so no nav link to them belongs here at all, not even a
+  // conditionally-shown one.
   return h('div', { className: 'max-w-md mx-auto px-4 pb-16' },
     h('div', { className: 'flex items-center gap-2 text-xs font-semibold text-kisan-ink/70 py-3' },
-      h('a', { href: '/declaration.html', className: 'flex items-center gap-1.5 bg-kisan-ink/5 px-3 py-1.5 rounded-full' },
-        h('i', { className: 'fa-solid fa-clipboard-list' }), t('navDeclaration')
-      ),
-      h('a', { href: '/dashboard.html', className: 'flex items-center gap-1.5 bg-kisan-ink/5 px-3 py-1.5 rounded-full' },
-        h('i', { className: 'fa-solid fa-chart-simple' }), t('navDashboard')
-      ),
       h('button', {
         type: 'button', onClick: logout,
         className: 'ml-auto flex items-center gap-1.5 bg-kisan-ink/5 px-3 py-1.5 rounded-full',

@@ -71,11 +71,13 @@ function createDeclarationRoutes(pool) {
 
   router.get('/centres', async (req, res, next) => {
     try {
-      const result = await pool.query('SELECT id, name, code, centre_type, latitude, longitude FROM centres ORDER BY name');
+      const result = await pool.query('SELECT id, name, name_hi, name_te, code, centre_type, latitude, longitude FROM centres ORDER BY name');
       return res.status(200).json(
         result.rows.map((r) => ({
           id: r.id,
           name: r.name,
+          nameHi: r.name_hi,
+          nameTe: r.name_te,
           code: r.code,
           centreType: r.centre_type,
           // Real, already-stored coordinates -- not derived or guessed --

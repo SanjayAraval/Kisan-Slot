@@ -271,10 +271,10 @@ function App() {
   return h('div', null,
     h('h1', null, 'District Officer Dashboard'),
     h('p', { className: 'sub' }, "Live view of tomorrow's declared centres, bookings, and bag stock risk."),
+    // No link to the farmer screen -- this page is district_officer-only,
+    // and a district officer can never use the farmer-only screen.
     h('div', { className: 'nav' },
       h('a', { href: '/declaration.html' }, "← Tonight's Declaration"),
-      ' · ',
-      h('a', { href: '/farmer.html' }, 'Farmer screen →'),
       ' · ',
       h('span', { style: { color: 'var(--ink-60)' } }, `Logged in as ${session.name}`),
       ' · ',

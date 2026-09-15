@@ -3,8 +3,8 @@
 const request = require('supertest');
 const { createApp } = require('./app');
 const { createTestPool } = require('./testUtils/pgMemDb');
-const { insertCentre, insertDailyInputs, DAILY_INPUT_BASELINE } = require('./testUtils/fixtures');
-const { districtOfficerAgent } = require('./testUtils/authTestHelpers');
+const { insertCentre, insertDailyInputs, insertFarmerWithLand, DAILY_INPUT_BASELINE } = require('./testUtils/fixtures');
+const { districtOfficerAgent, farmerAgent } = require('./testUtils/authTestHelpers');
 
 const DATE = '2026-09-05';
 
@@ -49,6 +49,21 @@ describe('GET /api/centres', () => {
     expect(res.status).toBe(200);
     expect(res.body).toHaveLength(1);
     expect(res.body[0].code).toBe('MDK-01');
+  });
+
+  test('includes a transliterated name per centre so non-English readers can identify it', async () => {
+    const { app, agent, pool } = setup();
+    await insertCentre(pool, {
+      name: 'Medak APMC Mandi',
+      nameHi: 'मेडक एपीएमसी मंडी',
+      nameTe: 'మెదక్ ఏపీఎంసీ మండి',
+      code: 'MDK-01',
+    });
+
+    const res = await agent.get('/api/centres');
+    expect(res.status).toBe(200);
+    expect(res.body[0].nameHi).toBe('मेडक एपीएमसी मंडी');
+    expect(res.body[0].nameTe).toBe('మెదక్ ఏపీఎంసీ మండి');
   });
 });
 
@@ -225,5 +240,33 @@ describe('POST /api/centres/:id/declaration', () => {
       expect(res.status).toBe(400);
       expect(res.body.errors.join(' ')).toMatch(/truckEvacuationCapacity/);
     });
+  });
+});
+
+// The declaration link is hidden from a farmer's UI, but the server is
+// the actual authority -- confirms it refuses a farmer regardless of
+// what any client sends.
+describe('a farmer session cannot reach centre-officer-only declaration routes', () => {
+  test('GET /api/centres/:id/declaration is refused', async () => {
+    const pool = createTestPool();
+    const app = createApp(pool);
+    const centreId = await insertCentre(pool);
+    await insertDailyInputs(pool, { centreId, serviceDate: DATE });
+    const farmerId = await insertFarmerWithLand(pool, {});
+    const agent = farmerAgent(app, farmerId);
+
+    const res = await agent.get(`/api/centres/${centreId}/declaration`).query({ date: DATE });
+    expect(res.status).toBe(403);
+  });
+
+  test('POST /api/centres/:id/declaration is refused', async () => {
+    const pool = createTestPool();
+    const app = createApp(pool);
+    const centreId = await insertCentre(pool);
+    const farmerId = await insertFarmerWithLand(pool, {});
+    const agent = farmerAgent(app, farmerId);
+
+    const res = await agent.post(`/api/centres/${centreId}/declaration`).send(fullDeclarationBody());
+    expect(res.status).toBe(403);
   });
 });
