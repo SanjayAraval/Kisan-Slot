@@ -2,7 +2,9 @@
 
 const express = require('express');
 const { checkinLot, recordQuality, recordWeighment, issueJForm, recordDispatch } = require('./lotService');
-const { requireAuth, requireBookingCentreScope } = require('./authMiddleware');
+const { scanLot, markServed, lookupByToken } = require('./queueService');
+const { requireAuth, requireRole, requireBookingCentreScope } = require('./authMiddleware');
+const queueEvents = require('./queueEvents');
 
 const STATUS_BY_RESULT_TYPE = {
   NOT_FOUND: 404,
@@ -18,7 +20,11 @@ function isNonEmptyString(v) {
 // only on a successful ('OK') result -- every other outcome (not found,
 // conflicting lot state, bad input) rolls back and maps to its HTTP
 // status via STATUS_BY_RESULT_TYPE.
-function lotAction(pool, fn, successStatus) {
+// `onCommitted(result)`, when given, runs after a successful commit --
+// scan/serve use it to broadcast the queue change (see queueEvents.js)
+// only once the transaction has actually landed, never speculatively
+// ahead of a possible rollback.
+function lotAction(pool, fn, successStatus, onCommitted) {
   return async (req, res, next) => {
     const client = await pool.connect();
     let result;
@@ -34,6 +40,7 @@ function lotAction(pool, fn, successStatus) {
     client.release();
 
     if (result.type === 'OK') {
+      if (onCommitted) onCommitted(result);
       const { type, ...body } = result;
       return res.status(successStatus).json({ status: 'OK', ...body });
     }
@@ -45,8 +52,27 @@ function lotAction(pool, fn, successStatus) {
 function createLotRoutes(pool) {
   const router = express.Router();
 
-  // Every lot action (checkin/quality/weigh/jform/dispatch) is a
-  // centre-side operation -- gated to the centre_officer/operator
+  // Resolves a scanned/typed token to the booking it belongs to -- the
+  // gate scan screen's manual-entry fallback only ever has the token, not
+  // a booking id to address /:id/scan with. Registered *before* the
+  // `/:id` middleware below: Express matches routes in registration
+  // order, and that middleware's own `/:id` would otherwise swallow this
+  // path too, treating the literal segment "by-token" as if it were a
+  // booking id. Not centre-scoped -- there's no centre to scope by until
+  // after this lookup -- but read-only and centre_officer/operator-only;
+  // the follow-up POST .../scan is what actually enforces centre scope.
+  router.get('/by-token/:token', requireAuth, requireRole('centre_officer', 'operator'), async (req, res, next) => {
+    try {
+      const booking = await lookupByToken(pool, req.params.token);
+      if (!booking) return res.status(404).json({ status: 'NOT_FOUND', message: 'no booking with this token' });
+      return res.status(200).json(booking);
+    } catch (err) {
+      return next(err);
+    }
+  });
+
+  // Every lot action (checkin/quality/weigh/jform/dispatch/scan/serve) is
+  // a centre-side operation -- gated to the centre_officer/operator
   // assigned to that booking's centre, or any district_officer for that
   // centre's district. Mounted at '/:id' (not a bare `.use()`) so
   // `req.params.id` is actually populated by the time this middleware
@@ -63,6 +89,38 @@ function createLotRoutes(pool) {
       next();
     },
     lotAction(pool, checkinLot, 200)
+  );
+
+  // The gate scan itself -- same token/status validation as checkin
+  // above (scanLot calls it directly), broadcast to the centre's live
+  // queue screens/board once committed.
+  router.post(
+    '/:id/scan',
+    (req, res, next) => {
+      if (!isNonEmptyString(req.body && req.body.token)) {
+        return res.status(400).json({ status: 'BAD_REQUEST', message: 'token is required' });
+      }
+      next();
+    },
+    lotAction(
+      pool,
+      (client, bookingId, body) => scanLot(client, bookingId, body.token),
+      200,
+      (result) => queueEvents.emit('changed', result.centreId)
+    )
+  );
+
+  // Advances the queue -- the officer calling the current now-serving
+  // token forward. See queueService.markServed for why this never
+  // touches bookings.status.
+  router.post(
+    '/:id/serve',
+    lotAction(
+      pool,
+      (client, bookingId) => markServed(client, bookingId),
+      200,
+      (result) => queueEvents.emit('changed', result.centreId)
+    )
   );
 
   router.post(

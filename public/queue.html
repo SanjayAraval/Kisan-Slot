@@ -1,0 +1,358 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<title>Live Queue</title>
+<link rel="stylesheet" href="/theme.css" />
+<style>
+  body { max-width: 760px; margin: 0 auto; padding: var(--space-5) var(--space-4) var(--space-8); }
+  h1 { font-size: 1.3rem; }
+  .sub { color: var(--ink-60); margin-bottom: var(--space-5); font-size: 0.9rem; }
+  fieldset { border: 1px solid var(--line); border-radius: var(--radius); padding: var(--space-4); margin: 0 0 var(--space-4); }
+  legend { padding: 0 var(--space-2); font-weight: 700; font-size: 0.95rem; }
+  .link-btn { background: none; border: none; color: var(--green); font-weight: 600; cursor: pointer; padding: 0; text-decoration: underline; min-height: auto; }
+  #reader { border-radius: var(--radius); overflow: hidden; border: 1px solid var(--line); }
+  #reader:empty { display: none; }
+  .scan-actions { display: flex; gap: var(--space-3); flex-wrap: wrap; margin-bottom: var(--space-4); }
+  .manual-row { display: flex; gap: var(--space-2); align-items: flex-end; flex-wrap: wrap; }
+  .manual-row .field { flex: 1 1 200px; margin-bottom: 0; min-width: 180px; }
+  .conn-dot { width: 0.5rem; height: 0.5rem; border-radius: 50%; display: inline-block; }
+  .conn-live .conn-dot { background: var(--green); }
+  .conn-poll .conn-dot { background: var(--amber); }
+  .conn-row { display: flex; align-items: center; gap: var(--space-2); font-size: 0.8rem; color: var(--ink-60); margin-bottom: var(--space-4); }
+  .now-serving { background: var(--gold-bg); border: 1px solid var(--gold-border); border-radius: var(--radius); padding: var(--space-4); margin-bottom: var(--space-4); display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; }
+  .now-serving .token { font-size: 1.6rem; font-weight: 800; }
+  .now-serving .label { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--gold-ink); font-weight: 700; margin-bottom: var(--space-1); }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/html5-qrcode@2/html5-qrcode.min.js"></script>
+<script>
+'use strict';
+const h = React.createElement;
+
+function formatLocalDate(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+function today() { return formatLocalDate(new Date()); }
+
+async function fetchJson(url, options) {
+  const res = await fetch(url, options);
+  const body = await res.json().catch(() => ({}));
+  return { status: res.status, body };
+}
+
+// Same WebSocket-first, 3-second-poll-fallback strategy on every screen
+// that needs a live queue (this one, farmer.html's Status tab,
+// board.html) -- push when it's available, never silent/stuck if it
+// isn't. See wsServer.js and queueEvents.js for the server side.
+function useLiveQueue(centreId, date) {
+  const [queue, setQueue] = React.useState(null);
+  const [mode, setMode] = React.useState('connecting');
+
+  React.useEffect(() => {
+    if (!centreId || !date) return undefined;
+    let cancelled = false;
+    let ws = null;
+    let pollTimer = null;
+
+    function startPolling() {
+      if (cancelled || pollTimer) return;
+      setMode('poll');
+      const poll = () => {
+        fetchJson(`/api/centres/${centreId}/queue?date=${date}`)
+          .then(({ status, body }) => { if (!cancelled && status === 200) setQueue(body); })
+          .catch(() => {});
+      };
+      poll();
+      pollTimer = setInterval(poll, 3000);
+    }
+
+    try {
+      const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+      ws = new WebSocket(`${protocol}://${window.location.host}/ws/queue`);
+      ws.onopen = () => {
+        if (cancelled) return;
+        setMode('ws');
+        ws.send(JSON.stringify({ type: 'subscribe', centreId, date }));
+      };
+      ws.onmessage = (event) => {
+        if (cancelled) return;
+        try {
+          const msg = JSON.parse(event.data);
+          if (msg.type === 'queue') setQueue(msg.queue);
+        } catch (err) { /* ignore a malformed push */ }
+      };
+      ws.onerror = () => { if (!cancelled) startPolling(); };
+      ws.onclose = () => { if (!cancelled) startPolling(); };
+    } catch (err) {
+      startPolling();
+    }
+
+    return () => {
+      cancelled = true;
+      if (ws) { ws.onclose = null; ws.onerror = null; ws.close(); }
+      if (pollTimer) clearInterval(pollTimer);
+    };
+  }, [centreId, date]);
+
+  return { queue, mode };
+}
+
+function ConnectionStatus({ mode }) {
+  return h('div', { className: `conn-row ${mode === 'ws' ? 'conn-live' : 'conn-poll'}` },
+    h('span', { className: 'conn-dot' }),
+    mode === 'ws' ? 'Live' : mode === 'poll' ? 'Updating every 3s' : 'Connecting…'
+  );
+}
+
+function ScanPanel({ onScanned }) {
+  const [scanning, setScanning] = React.useState(false);
+  const [manualToken, setManualToken] = React.useState('');
+  const [submitting, setSubmitting] = React.useState(false);
+  const [result, setResult] = React.useState(null);
+  const scannerRef = React.useRef(null);
+
+  React.useEffect(() => () => {
+    if (scannerRef.current) scannerRef.current.stop().catch(() => {});
+  }, []);
+
+  async function submitScan(bookingId, token) {
+    setSubmitting(true);
+    try {
+      const { status, body } = await fetchJson(`/api/lots/${bookingId}/scan`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token }),
+      });
+      if (status === 200) {
+        setResult({ ok: true, message: `Checked in -- token ${token}.` });
+        onScanned();
+      } else {
+        setResult({ ok: false, message: body.message || (body.errors || []).join(', ') || 'Could not check in this lot.' });
+      }
+    } catch (err) {
+      setResult({ ok: false, message: err.message });
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function stopScanning() {
+    if (scannerRef.current) {
+      try { await scannerRef.current.stop(); scannerRef.current.clear(); } catch (err) { /* already stopped */ }
+      scannerRef.current = null;
+    }
+    setScanning(false);
+  }
+
+  async function onDecoded(decodedText) {
+    await stopScanning();
+    let payload;
+    try {
+      payload = JSON.parse(decodedText);
+    } catch (err) {
+      setResult({ ok: false, message: 'Unrecognised QR code -- try manual entry below.' });
+      return;
+    }
+    if (!payload.bookingId || !payload.token) {
+      setResult({ ok: false, message: "This QR code isn't a Kisan Slot gate pass." });
+      return;
+    }
+    await submitScan(payload.bookingId, payload.token);
+  }
+
+  async function startScanning() {
+    setResult(null);
+    if (!window.Html5Qrcode) {
+      setResult({ ok: false, message: 'Camera scanner failed to load -- use manual entry below.' });
+      return;
+    }
+    const qr = new window.Html5Qrcode('reader');
+    scannerRef.current = qr;
+    try {
+      await qr.start(
+        { facingMode: 'environment' },
+        { fps: 10, qrbox: 250 },
+        onDecoded,
+        () => {} // per-frame "nothing decoded this frame" -- expected continuously while aiming, not an error
+      );
+      setScanning(true);
+    } catch (err) {
+      setResult({ ok: false, message: 'Could not access the camera -- use manual entry below.' });
+      scannerRef.current = null;
+    }
+  }
+
+  async function submitManual() {
+    const token = manualToken.trim();
+    if (!token) return;
+    setResult(null);
+    setSubmitting(true);
+    try {
+      const lookup = await fetchJson(`/api/lots/by-token/${encodeURIComponent(token)}`);
+      if (lookup.status !== 200) {
+        setResult({ ok: false, message: lookup.body.message || 'No booking found for that token.' });
+        return;
+      }
+      await submitScan(lookup.body.bookingId, lookup.body.token);
+      setManualToken('');
+    } catch (err) {
+      setResult({ ok: false, message: err.message });
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return h('fieldset', null,
+    h('legend', null, 'Scan a gate pass'),
+    result && h('div', { className: `callout ${result.ok ? 'callout-success' : 'callout-danger'}`, style: { marginBottom: 'var(--space-4)' } }, result.message),
+
+    h('div', { className: 'scan-actions' },
+      !scanning
+        ? h('button', { className: 'btn btn-primary', onClick: startScanning }, '📷 Start camera scan')
+        : h('button', { className: 'btn btn-secondary', onClick: stopScanning }, 'Stop camera')
+    ),
+    h('div', { id: 'reader', style: { marginBottom: scanning ? 'var(--space-4)' : 0 } }),
+
+    h('div', { className: 'field' },
+      h('label', null, 'Or enter the token manually'),
+      h('div', { className: 'manual-row' },
+        h('div', { className: 'field' },
+          h('input', {
+            type: 'text', placeholder: 'e.g. MDK-01-20260916-001', value: manualToken,
+            onChange: (e) => setManualToken(e.target.value),
+            onKeyDown: (e) => { if (e.key === 'Enter') submitManual(); },
+          })
+        ),
+        h('button', { className: 'btn btn-secondary', onClick: submitManual, disabled: submitting || !manualToken.trim() },
+          submitting && h('span', { className: 'spinner' }),
+          submitting ? 'Checking…' : 'Check in'
+        )
+      )
+    )
+  );
+}
+
+function NowServing({ lot, onServe }) {
+  if (!lot) {
+    return h('div', { className: 'empty-state' }, h('span', { className: 'ic' }, '🚪'), 'Nobody in the queue yet.');
+  }
+  return h('div', { className: 'now-serving' },
+    h('div', null,
+      h('div', { className: 'label' }, 'Now serving'),
+      h('div', { className: 'token' }, lot.token),
+      h('div', { style: { fontSize: '0.85rem', color: 'var(--ink-60)' } }, lot.farmerName)
+    ),
+    h('button', { className: 'btn btn-primary', onClick: () => onServe(lot.bookingId) }, 'Mark served')
+  );
+}
+
+function WaitingTable({ rows, onServe }) {
+  if (rows.length === 0) {
+    return h('div', { className: 'empty-state', style: { padding: 'var(--space-4) 0' } }, 'No one else waiting.');
+  }
+  return h('div', { className: 'table-scroll' },
+    h('table', null,
+      h('thead', null, h('tr', null,
+        h('th', null, 'Pos.'), h('th', null, 'Token'), h('th', null, 'Farmer'), h('th', null, 'ETA'), h('th', null, '')
+      )),
+      h('tbody', null,
+        rows.map((r) => h('tr', { key: r.bookingId },
+          h('td', { className: 'num' }, r.position),
+          h('td', null, r.token),
+          h('td', null, r.farmerName),
+          h('td', { className: 'num' }, r.etaMinutes === null ? '—' : `~${r.etaMinutes} min`),
+          h('td', null, h('button', { className: 'btn btn-secondary btn-sm', onClick: () => onServe(r.bookingId) }, 'Mark served'))
+        ))
+      )
+    )
+  );
+}
+
+function App() {
+  const [session, setSession] = React.useState({ loading: true, role: null, centreId: null, name: null });
+  const [centreLabel, setCentreLabel] = React.useState(null);
+  const date = today();
+
+  React.useEffect(() => {
+    fetchJson('/api/auth/me')
+      .then(({ status, body }) => {
+        if (status !== 200 || (body.role !== 'centre_officer' && body.role !== 'operator')) {
+          window.location.href = '/login.html';
+          return;
+        }
+        setSession({ loading: false, role: body.role, centreId: body.centreId, name: body.name });
+      })
+      .catch(() => { window.location.href = '/login.html'; });
+  }, []);
+
+  React.useEffect(() => {
+    if (!session.centreId) return;
+    fetchJson('/api/centres')
+      .then(({ body }) => {
+        const centre = Array.isArray(body) ? body.find((c) => c.id === session.centreId) : null;
+        if (centre) setCentreLabel(`${centre.name} (${centre.code})`);
+      })
+      .catch(() => {});
+  }, [session.centreId]);
+
+  const { queue, mode } = useLiveQueue(session.centreId, date);
+
+  async function markServed(bookingId) {
+    const { status, body } = await fetchJson(`/api/lots/${bookingId}/serve`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+    });
+    if (status !== 200) {
+      window.alert(body.message || 'Could not mark this lot served.'); // eslint-disable-line no-alert -- rare failure path, not worth a dedicated banner
+    }
+    // No manual refresh needed -- the WS push (or next 3s poll) reflects it.
+  }
+
+  async function logout() {
+    await fetchJson('/api/auth/logout', { method: 'POST' }).catch(() => {});
+    window.location.href = '/login.html';
+  }
+
+  if (session.loading) {
+    return h('div', { className: 'loading-row', style: { padding: 'var(--space-5) var(--space-4)' } },
+      h('span', { className: 'spinner' }), 'Checking your session…'
+    );
+  }
+
+  return h('div', null,
+    h('h1', null, 'Live Queue'),
+    h('p', { className: 'sub' }, centreLabel || "Today's gate queue -- scan farmers in, then call them forward as they're served."),
+    h('p', { style: { fontSize: '0.8rem', color: 'var(--ink-60)', marginTop: 0, marginBottom: 'var(--space-4)' } },
+      h('a', { href: '/declaration.html' }, "← Tonight's Declaration"), ' · ',
+      `Logged in as ${session.name} (${session.role.replace('_', ' ')})`, ' · ',
+      h('button', { className: 'link-btn', onClick: logout }, 'Log out')
+    ),
+
+    h(ScanPanel, { onScanned: () => {} }),
+
+    h('fieldset', null,
+      h('legend', null, "Today's queue"),
+      h(ConnectionStatus, { mode }),
+      !queue
+        ? h('div', { className: 'loading-row' }, h('span', { className: 'spinner' }), 'Loading queue…')
+        : h('div', null,
+            h(NowServing, { lot: queue.nowServing, onServe: markServed }),
+            h(WaitingTable, { rows: queue.waiting, onServe: markServed })
+          )
+    )
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(h(App));
+</script>
+</body>
+</html>

@@ -324,11 +324,14 @@ function App() {
   return h('div', null,
     h('h1', null, "Tonight's Declaration"),
     h('p', { className: 'sub' }, "Declare tomorrow's operating inputs and see the recomputed capacity."),
-    // The dashboard is district_officer-only -- a centre_officer here
-    // would only ever hit its own redirect back to login. The farmer
-    // screen isn't linked at all: no officer role can use it.
+    // The dashboard is district_officer-only, and the live queue is
+    // centre_officer-only -- each role only ever sees its own link. The
+    // farmer screen isn't linked at all: no officer role can use it.
     session.role === 'district_officer' && h('p', { style: { fontSize: '0.85rem', marginTop: '-0.75rem', marginBottom: 'var(--space-2)' } },
       h('a', { href: '/dashboard.html' }, 'District officer dashboard →')
+    ),
+    session.role === 'centre_officer' && h('p', { style: { fontSize: '0.85rem', marginTop: '-0.75rem', marginBottom: 'var(--space-2)' } },
+      h('a', { href: '/queue.html' }, 'Live queue →')
     ),
     h('p', { style: { fontSize: '0.8rem', color: 'var(--ink-60)', marginTop: 0, marginBottom: 'var(--space-4)' } },
       `Logged in as ${session.name} (${session.role.replace('_', ' ')})`, ' · ',

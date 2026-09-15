@@ -6,6 +6,7 @@ const cookieParser = require('cookie-parser');
 const { attemptBooking, findAlternatives } = require('./bookingService');
 const { computeCentreDayCapacity, computeRemainingSlots } = require('./capacityService');
 const { createLotRoutes } = require('./lotRoutes');
+const { createQueueRoutes } = require('./queueRoutes');
 const { createDeclarationRoutes } = require('./declarationRoutes');
 const { createDashboardRoutes } = require('./dashboardRoutes');
 const { createFarmerRoutes } = require('./farmerRoutes');
@@ -166,6 +167,7 @@ function createApp(pool, { now = todayInIST } = {}) {
   });
 
   app.use('/api/lots', createLotRoutes(pool));
+  app.use('/api', createQueueRoutes(pool));
   app.use('/api', createDeclarationRoutes(pool));
   app.use('/api', createDashboardRoutes(pool));
   app.use('/api', createFarmerRoutes(pool));

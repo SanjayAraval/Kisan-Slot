@@ -136,6 +136,12 @@ const TRANSLATIONS = {
     ticketFarmer: 'Farmer',
     ticketToken: 'Token',
     ticketScanNote: 'Show this QR code at the gate.',
+    loadingQueue: 'Loading queue position…',
+    nowServingYou: "It's your turn -- head to the gate now.",
+    queuePosition: '{n} ahead of you in the queue.',
+    queueCalled: "You've already been called forward -- proceed to the next station.",
+    nowServingLabel: 'Now serving',
+    etaLabel: '~{n} min wait',
     loadingStatus: 'Loading status…',
     noBookingsYet: 'No bookings yet.',
     bookSlotBtn: 'Book a slot',
@@ -241,6 +247,12 @@ const TRANSLATIONS = {
     ticketFarmer: 'किसान',
     ticketToken: 'टोकन',
     ticketScanNote: 'गेट पर यह क्यूआर कोड दिखाएँ।',
+    loadingQueue: 'कतार में स्थिति लोड हो रही है…',
+    nowServingYou: 'आपकी बारी है -- अभी गेट पर जाएँ।',
+    queuePosition: 'कतार में आपसे पहले {n} लोग हैं।',
+    queueCalled: 'आपको पहले ही बुलाया जा चुका है -- अगले चरण पर जाएँ।',
+    nowServingLabel: 'अभी सेवा में',
+    etaLabel: '~{n} मिनट प्रतीक्षा',
     loadingStatus: 'स्थिति लोड हो रही है…',
     noBookingsYet: 'अभी तक कोई बुकिंग नहीं।',
     bookSlotBtn: 'स्लॉट बुक करें',
@@ -346,6 +358,12 @@ const TRANSLATIONS = {
     ticketFarmer: 'రైతు',
     ticketToken: 'టోకెన్',
     ticketScanNote: 'గేటు వద్ద ఈ క్యూఆర్ కోడ్‌ను చూపించండి.',
+    loadingQueue: 'క్యూ స్థితి లోడ్ అవుతోంది…',
+    nowServingYou: 'మీ వంతు వచ్చింది -- ఇప్పుడు గేటుకు వెళ్లండి.',
+    queuePosition: 'క్యూలో మీకు ముందు {n} మంది ఉన్నారు.',
+    queueCalled: 'మిమ్మల్ని ఇప్పటికే పిలిచారు -- తదుపరి దశకు వెళ్లండి.',
+    nowServingLabel: 'ప్రస్తుతం సేవలో',
+    etaLabel: '~{n} నిమిషాల వేచి ఉండాలి',
     loadingStatus: 'స్థితి లోడ్ అవుతోంది…',
     noBookingsYet: 'ఇంకా బుకింగ్‌లు లేవు.',
     bookSlotBtn: 'స్లాట్ బుక్ చేయండి',
@@ -701,14 +719,18 @@ function QRTicket({ booking, farmer }) {
     if (!boxRef.current || !window.QRCode) return;
     boxRef.current.innerHTML = '';
     new window.QRCode(boxRef.current, {
-      text: JSON.stringify({ token: booking.token, farmerId: farmer.id }),
+      // bookingId lets the gate scan screen call POST /lots/:id/scan
+      // directly off a decoded QR, with no separate by-token lookup step
+      // (that lookup exists only for that screen's manual-entry fallback,
+      // where a bookingId was never available in the first place).
+      text: JSON.stringify({ bookingId: booking.id, token: booking.token, farmerId: farmer.id }),
       width: 168,
       height: 168,
       colorDark: '#16241C',
       colorLight: '#FFFFFF',
       correctLevel: window.QRCode.CorrectLevel.M,
     });
-  }, [booking.token, farmer.id]);
+  }, [booking.id, booking.token, farmer.id]);
 
   return h('div', { className: 'rounded-2xl border-2 border-dashed border-kisan-ink/25 bg-kisan-paperRaised p-5 text-center' },
     h('div', { className: 'flex items-center justify-center gap-2 text-kisan-ink/60 text-xs font-bold uppercase tracking-wide mb-3' },
@@ -721,6 +743,94 @@ function QRTicket({ booking, farmer }) {
     h('div', { className: 'border-t border-dashed border-kisan-ink/20 pt-3 text-xs text-kisan-ink/60 flex items-center justify-center gap-2' },
       h('i', { className: 'fa-solid fa-qrcode' }),
       t('ticketScanNote')
+    )
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Live queue (WebSocket-first, 3-second-poll fallback -- same strategy as
+// queue.html and board.html; see wsServer.js / queueEvents.js)
+// ---------------------------------------------------------------------------
+
+function useLiveQueue(centreId, date) {
+  const [queue, setQueue] = useState(null);
+
+  useEffect(() => {
+    if (!centreId || !date) return undefined;
+    let cancelled = false;
+    let ws = null;
+    let pollTimer = null;
+
+    function startPolling() {
+      if (cancelled || pollTimer) return;
+      const poll = () => {
+        fetchJson(`/api/centres/${centreId}/queue?date=${date}`)
+          .then(({ httpStatus, body }) => { if (!cancelled && httpStatus === 200) setQueue(body); })
+          .catch(() => {});
+      };
+      poll();
+      pollTimer = setInterval(poll, 3000);
+    }
+
+    try {
+      const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+      ws = new WebSocket(`${protocol}://${window.location.host}/ws/queue`);
+      ws.onopen = () => { if (!cancelled) ws.send(JSON.stringify({ type: 'subscribe', centreId, date })); };
+      ws.onmessage = (event) => {
+        if (cancelled) return;
+        try {
+          const msg = JSON.parse(event.data);
+          if (msg.type === 'queue') setQueue(msg.queue);
+        } catch (err) { /* ignore a malformed push */ }
+      };
+      ws.onerror = () => { if (!cancelled) startPolling(); };
+      ws.onclose = () => { if (!cancelled) startPolling(); };
+    } catch (err) {
+      startPolling();
+    }
+
+    return () => {
+      cancelled = true;
+      if (ws) { ws.onclose = null; ws.onerror = null; ws.close(); }
+      if (pollTimer) clearInterval(pollTimer);
+    };
+  }, [centreId, date]);
+
+  return queue;
+}
+
+// Shown once a farmer is actually checked in -- before that there's no
+// gate queue to be positioned in yet.
+function LiveQueueCard({ booking }) {
+  const t = useT();
+  const queue = useLiveQueue(booking.centreId, booking.serviceDate);
+
+  if (!queue) {
+    return h(Card, null,
+      h('p', { className: 'm-0 text-sm text-kisan-ink/60 flex items-center gap-2' },
+        h('i', { className: 'fa-solid fa-circle-notch fa-spin' }), t('loadingQueue')
+      )
+    );
+  }
+
+  const isNowServing = queue.nowServing && queue.nowServing.token === booking.token;
+  const mine = isNowServing ? null : queue.waiting.find((w) => w.token === booking.token);
+  // Checked in (this component only renders then) but not now-serving and
+  // not in the waiting list either -- the only way there is having already
+  // been called forward (see queue.html's "Mark served"). Distinct from
+  // "waiting": that message would be actively wrong here.
+  const alreadyCalled = !isNowServing && !mine;
+
+  return h(Callout, {
+    tone: isNowServing || alreadyCalled ? 'success' : 'warning',
+    icon: isNowServing ? 'fa-bell' : alreadyCalled ? 'fa-circle-check' : 'fa-people-line',
+  },
+    h('p', { className: 'font-bold mb-1' },
+      isNowServing ? t('nowServingYou') : mine ? t('queuePosition', { n: mine.position }) : t('queueCalled')
+    ),
+    !alreadyCalled && h('p', { className: 'text-sm m-0' },
+      `${t('nowServingLabel')}: ${queue.nowServing ? queue.nowServing.token : '—'}`,
+      mine && mine.etaMinutes !== null ? ` · ${t('etaLabel', { n: mine.etaMinutes })}` : ''
     )
   );
 }
@@ -1107,6 +1217,7 @@ function StatusScreen({ farmer, onSwitchTab }) {
   const isActiveBooking = ACTIVE_BOOKING_STATUSES.includes(booking.status);
   return h('div', null,
     isActiveBooking && h('div', { className: 'mb-4' }, h(QRTicket, { booking, farmer })),
+    booking.status === 'checked_in' && h('div', { className: 'mb-4' }, h(LiveQueueCard, { booking })),
     h(Card, null,
       h(Row, {
         k: t('rowCentre'),

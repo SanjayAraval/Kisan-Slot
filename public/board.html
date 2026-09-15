@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Queue Board</title>
+<link rel="stylesheet" href="/theme.css" />
+<style>
+  html, body { height: 100%; background: var(--ink); }
+  body {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: var(--space-6); text-align: center; color: var(--paper);
+  }
+  .wrap { width: 100%; max-width: 1100px; }
+  .centre-name { font-size: 1.6rem; font-weight: 700; color: var(--paper); opacity: 0.85; margin-bottom: var(--space-2); }
+  .label { font-size: 1.1rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--gold); font-weight: 700; margin-bottom: var(--space-3); }
+  .now-token { font-size: clamp(4rem, 14vw, 9rem); font-weight: 800; line-height: 1; letter-spacing: 0.02em; }
+  .now-farmer { font-size: 1.4rem; color: var(--paper); opacity: 0.7; margin-top: var(--space-3); }
+  .next-row { display: flex; justify-content: center; gap: var(--space-5); margin-top: var(--space-7); flex-wrap: wrap; }
+  .next-item { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.14); border-radius: var(--radius); padding: var(--space-4) var(--space-6); min-width: 160px; }
+  .next-item .n { font-size: 2rem; font-weight: 700; }
+  .next-item .l { font-size: 0.8rem; color: var(--paper); opacity: 0.6; margin-top: var(--space-1); }
+  .stat-row { display: flex; justify-content: center; gap: var(--space-7); margin-top: var(--space-8); flex-wrap: wrap; }
+  .stat-row .n { font-size: 1.6rem; font-weight: 700; }
+  .stat-row .l { font-size: 0.85rem; color: var(--paper); opacity: 0.6; }
+  .moisture-note { margin-top: var(--space-7); font-size: 1rem; color: var(--paper); opacity: 0.55; }
+  .conn { position: fixed; bottom: var(--space-4); right: var(--space-4); font-size: 0.75rem; color: var(--paper); opacity: 0.4; display: flex; align-items: center; gap: var(--space-2); }
+  .conn-dot { width: 0.4rem; height: 0.4rem; border-radius: 50%; background: var(--green); }
+  .conn-poll .conn-dot { background: var(--amber); }
+  .picker { background: var(--paper); color: var(--ink); border-radius: var(--radius); padding: var(--space-6); max-width: 420px; margin: 0 auto; }
+  .picker select { margin-bottom: var(--space-4); }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+<script>
+'use strict';
+const h = React.createElement;
+
+function formatLocalDate(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+function today() { return formatLocalDate(new Date()); }
+
+async function fetchJson(url, options) {
+  const res = await fetch(url, options);
+  const body = await res.json().catch(() => ({}));
+  return { status: res.status, body };
+}
+
+// Same WebSocket-first, 3-second-poll-fallback strategy as queue.html and
+// farmer.html's Status tab -- see wsServer.js / queueEvents.js.
+function useLiveQueue(centreId, date) {
+  const [queue, setQueue] = React.useState(null);
+  const [mode, setMode] = React.useState('connecting');
+
+  React.useEffect(() => {
+    if (!centreId || !date) return undefined;
+    let cancelled = false;
+    let ws = null;
+    let pollTimer = null;
+
+    function startPolling() {
+      if (cancelled || pollTimer) return;
+      setMode('poll');
+      const poll = () => {
+        fetchJson(`/api/centres/${centreId}/queue?date=${date}`)
+          .then(({ status, body }) => { if (!cancelled && status === 200) setQueue(body); })
+          .catch(() => {});
+      };
+      poll();
+      pollTimer = setInterval(poll, 3000);
+    }
+
+    try {
+      const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+      ws = new WebSocket(`${protocol}://${window.location.host}/ws/queue`);
+      ws.onopen = () => {
+        if (cancelled) return;
+        setMode('ws');
+        ws.send(JSON.stringify({ type: 'subscribe', centreId, date }));
+      };
+      ws.onmessage = (event) => {
+        if (cancelled) return;
+        try {
+          const msg = JSON.parse(event.data);
+          if (msg.type === 'queue') setQueue(msg.queue);
+        } catch (err) { /* ignore a malformed push */ }
+      };
+      ws.onerror = () => { if (!cancelled) startPolling(); };
+      ws.onclose = () => { if (!cancelled) startPolling(); };
+    } catch (err) {
+      startPolling();
+    }
+
+    return () => {
+      cancelled = true;
+      if (ws) { ws.onclose = null; ws.onerror = null; ws.close(); }
+      if (pollTimer) clearInterval(pollTimer);
+    };
+  }, [centreId, date]);
+
+  return { queue, mode };
+}
+
+// A kiosk display has nobody to click through a picker every reload --
+// the choice of centre is read from ?centreId=, and picking one here
+// writes it back into the URL (replaceState, no navigation) so the same
+// device reopening this page later comes straight back to its board.
+function CentrePicker({ centres, onPick }) {
+  const [centreId, setCentreId] = React.useState(centres[0] ? centres[0].id : '');
+  return h('div', { className: 'picker' },
+    h('h1', { style: { fontSize: '1.2rem', marginBottom: 'var(--space-4)' } }, 'Which centre?'),
+    h('select', { value: centreId, onChange: (e) => setCentreId(e.target.value) },
+      centres.map((c) => h('option', { key: c.id, value: c.id }, `${c.name} (${c.code})`))
+    ),
+    h('button', { className: 'btn btn-primary btn-block', onClick: () => onPick(centreId), disabled: !centreId }, 'Show board')
+  );
+}
+
+function App() {
+  const [centres, setCentres] = React.useState(null);
+  const [centreId, setCentreId] = React.useState(() => new URLSearchParams(window.location.search).get('centreId') || '');
+  const date = today();
+
+  React.useEffect(() => {
+    fetchJson('/api/centres').then(({ body }) => setCentres(Array.isArray(body) ? body : [])).catch(() => setCentres([]));
+  }, []);
+
+  const { queue, mode } = useLiveQueue(centreId, date);
+
+  function pickCentre(id) {
+    setCentreId(id);
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.set('centreId', id);
+      window.history.replaceState({}, '', url);
+    } catch (err) { /* non-fatal -- the board still works for this session */ }
+  }
+
+  if (!centres) {
+    return h('div', { style: { color: 'var(--paper)' } }, h('span', { className: 'spinner' }), ' Loading…');
+  }
+
+  if (!centreId) {
+    return h(CentrePicker, { centres, onPick: pickCentre });
+  }
+
+  if (!queue) {
+    return h('div', { style: { color: 'var(--paper)' } }, h('span', { className: 'spinner' }), ' Loading queue…');
+  }
+
+  const next = queue.waiting.slice(0, 3);
+
+  return h('div', { className: 'wrap' },
+    h('div', { className: 'centre-name' }, `${queue.centreName} (${queue.centreCode})`),
+    h('div', { className: 'label' }, 'Now serving'),
+    h('div', { className: 'now-token' }, queue.nowServing ? queue.nowServing.token : '—'),
+    queue.nowServing && h('div', { className: 'now-farmer' }, queue.nowServing.farmerName),
+
+    h('div', { className: 'next-row' },
+      next.length === 0
+        ? h('div', { style: { color: 'var(--paper)', opacity: 0.5 } }, 'No one else waiting.')
+        : next.map((w, i) => h('div', { className: 'next-item', key: w.bookingId },
+            h('div', { className: 'n' }, w.token),
+            h('div', { className: 'l' }, i === 0 ? 'Next' : `+${i + 1}`)
+          ))
+    ),
+
+    h('div', { className: 'stat-row' },
+      h('div', null,
+        h('div', { className: 'n' }, queue.averageWaitMinutes === null ? '—' : `${queue.averageWaitMinutes} min`),
+        h('div', { className: 'l' }, 'Average wait per lot')
+      ),
+      h('div', null,
+        h('div', { className: 'n' }, queue.waiting.length + (queue.nowServing ? 1 : 0)),
+        h('div', { className: 'l' }, 'In queue now')
+      ),
+      h('div', null,
+        h('div', { className: 'n' }, queue.servedCount),
+        h('div', { className: 'l' }, 'Served today')
+      )
+    ),
+
+    h('div', { className: 'moisture-note' },
+      `Moisture limit: ${queue.moistureLimitPct}%. Wet paddy above this may be cut or rejected at the gate.`
+    ),
+
+    h('div', { className: `conn ${mode === 'ws' ? '' : 'conn-poll'}` },
+      h('span', { className: 'conn-dot' }),
+      mode === 'ws' ? 'Live' : mode === 'poll' ? 'Updating every 3s' : 'Connecting…'
+    )
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(h(App));
+</script>
+</body>
+</html>
