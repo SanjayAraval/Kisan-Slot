@@ -85,6 +85,7 @@ describe('GET /api/centres/:id/declaration', () => {
     expect(res.status).toBe(200);
     expect(res.body.inputs.gunnyBagsAvailable).toBe(4321);
     expect(res.body.inputs.hamaliGangCount).toBe(DAILY_INPUT_BASELINE.hamaliGangCount);
+    expect(res.body.inputs.updatedAt).toBeTruthy();
   });
 
   test('400s without a date', async () => {
@@ -189,6 +190,81 @@ describe('POST /api/centres/:id/declaration', () => {
       .post('/api/centres/00000000-0000-0000-0000-000000000000/declaration')
       .send(fullDeclarationBody());
     expect(res.status).toBe(404);
+  });
+
+  describe('stale resubmit protection (release-bags vs. an outdated declaration form)', () => {
+    test('after bags are released from the dashboard, the declaration screen shows the updated capacity', async () => {
+      const { app, agent, pool } = setup();
+      const centreId = await insertCentre(pool);
+      await agent.post(`/api/centres/${centreId}/declaration`).send(fullDeclarationBody({ gunnyBagsAvailable: 6000 }));
+
+      const release = await agent
+        .post(`/api/dashboard/centres/${centreId}/release-bags`)
+        .send({ date: DATE, additionalBags: 500 });
+      expect(release.status).toBe(200);
+      expect(release.body.gunnyBagsAvailable).toBe(6500);
+
+      const declaration = await agent.get(`/api/centres/${centreId}/declaration`).query({ date: DATE });
+      expect(declaration.status).toBe(200);
+      expect(declaration.body.inputs.gunnyBagsAvailable).toBe(6500);
+
+      const centreDay = await pool.query('SELECT bags_capacity FROM centre_day WHERE centre_id = $1', [centreId]);
+      expect(Number(centreDay.rows[0].bags_capacity)).toBeGreaterThan(0);
+    });
+
+    test('resubmitting a form loaded before a release-bags change is rejected as stale, not silently applied', async () => {
+      const { app, agent, pool } = setup();
+      const centreId = await insertCentre(pool);
+      await agent.post(`/api/centres/${centreId}/declaration`).send(fullDeclarationBody({ gunnyBagsAvailable: 6000 }));
+
+      // The officer loads the form -- captures the version at this point.
+      const loaded = await agent.get(`/api/centres/${centreId}/declaration`).query({ date: DATE });
+      const staleVersion = loaded.body.inputs.updatedAt;
+
+      // Meanwhile, bags are released from the dashboard.
+      await agent.post(`/api/dashboard/centres/${centreId}/release-bags`).send({ date: DATE, additionalBags: 500 });
+
+      // The officer's browser still has the old form open and submits it.
+      const resubmit = await agent
+        .post(`/api/centres/${centreId}/declaration`)
+        .send(fullDeclarationBody({ gunnyBagsAvailable: 6000, expectedUpdatedAt: staleVersion }));
+
+      expect(resubmit.status).toBe(409);
+      expect(resubmit.body.status).toBe('CONFLICT');
+      expect(resubmit.body.message).toMatch(/changed by someone else/i);
+
+      // The dashboard's release is NOT undone.
+      const after = await agent.get(`/api/centres/${centreId}/declaration`).query({ date: DATE });
+      expect(after.body.inputs.gunnyBagsAvailable).toBe(6500);
+    });
+
+    test('resubmitting with the current version succeeds normally', async () => {
+      const { app, agent, pool } = setup();
+      const centreId = await insertCentre(pool);
+      await agent.post(`/api/centres/${centreId}/declaration`).send(fullDeclarationBody({ gunnyBagsAvailable: 6000 }));
+
+      const loaded = await agent.get(`/api/centres/${centreId}/declaration`).query({ date: DATE });
+      const currentVersion = loaded.body.inputs.updatedAt;
+
+      const resubmit = await agent
+        .post(`/api/centres/${centreId}/declaration`)
+        .send(fullDeclarationBody({ gunnyBagsAvailable: 7000, expectedUpdatedAt: currentVersion }));
+
+      expect(resubmit.status).toBe(200);
+      const after = await agent.get(`/api/centres/${centreId}/declaration`).query({ date: DATE });
+      expect(after.body.inputs.gunnyBagsAvailable).toBe(7000);
+    });
+
+    test('a first-ever declaration for a centre/date is unaffected by expectedUpdatedAt', async () => {
+      const { app, agent, pool } = setup();
+      const centreId = await insertCentre(pool);
+
+      const res = await agent
+        .post(`/api/centres/${centreId}/declaration`)
+        .send(fullDeclarationBody({ expectedUpdatedAt: '2020-01-01T00:00:00.000Z' }));
+
+      expect(res.status).toBe(200);
+    });
   });
 
   describe('bags, gangs and trucks must be positive integers within plausible bounds', () => {

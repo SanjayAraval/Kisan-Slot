@@ -55,6 +55,9 @@ function toApiInputs(row) {
     avgTruckLoadTonnes: Number(row.avg_truck_load_tonnes),
     moistureMeterCount: Number(row.moisture_meter_count),
     moistureTestsPerMeterPerDay: Number(row.moisture_tests_per_meter_per_day),
+    // Echoed straight back on the next submit as expectedUpdatedAt --
+    // lets the server detect a stale resubmit (see upsertDailyInputs).
+    updatedAt: row.updated_at,
   };
 }
 
@@ -62,7 +65,51 @@ function toApiInputs(row) {
 // genuine correction (the officer can re-declare before the night is
 // out), not append-only like a J-Form. id is generated client-side; see
 // upsertCentreDay's comment for why.
-async function upsertDailyInputs(client, centreId, serviceDate, inputs) {
+//
+// `expectedUpdatedAt`, when given, guards against a stale resubmit: if a
+// declaration already on file has since been touched by someone else
+// (most concretely, bags released from the district dashboard) the
+// officer's now-outdated form must not silently overwrite it. Checked
+// with a plain conditional UPDATE first (not an ON CONFLICT ... WHERE
+// upsert) so "the WHERE didn't match" and "no row existed yet" are two
+// unambiguous, separately-handled outcomes rather than relying on
+// RETURNING-on-a-blocked-conflict semantics.
+async function upsertDailyInputs(client, centreId, serviceDate, inputs, expectedUpdatedAt) {
+  if (expectedUpdatedAt) {
+    const updateResult = await client.query(
+      `UPDATE centre_daily_inputs SET
+         weighing_mode = $4, weighbridge_operating_minutes = $5, weighbridge_avg_cycle_minutes = $6,
+         seconds_per_bag = $7, avg_bags_per_lot = $8, hamali_gang_count = $9, hamali_bags_per_gang_per_day = $10,
+         bags_per_truck = $11, gunny_bags_available = $12, truck_evacuation_capacity = $13,
+         yard_capacity_tonnes = $14, undispatched_tonnes = $15, avg_truck_load_tonnes = $16,
+         moisture_meter_count = $17, moisture_tests_per_meter_per_day = $18, updated_at = now()
+       WHERE centre_id = $1 AND service_date = $2 AND updated_at = $3
+       RETURNING id, updated_at`,
+      [
+        centreId, serviceDate, expectedUpdatedAt, inputs.weighingMode,
+        inputs.weighbridgeOperatingMinutes, inputs.weighbridgeAvgCycleMinutes, inputs.secondsPerBag, inputs.avgBagsPerLot,
+        inputs.hamaliGangCount, inputs.hamaliBagsPerGangPerDay, inputs.bagsPerTruck, inputs.gunnyBagsAvailable,
+        inputs.truckEvacuationCapacity, inputs.yardCapacityTonnes, inputs.undispatchedTonnes, inputs.avgTruckLoadTonnes,
+        inputs.moistureMeterCount, inputs.moistureTestsPerMeterPerDay,
+      ]
+    );
+    if (updateResult.rowCount > 0) {
+      return { id: updateResult.rows[0].id, updatedAt: updateResult.rows[0].updated_at, stale: false };
+    }
+
+    const existing = await client.query(
+      'SELECT id FROM centre_daily_inputs WHERE centre_id = $1 AND service_date = $2',
+      [centreId, serviceDate]
+    );
+    if (existing.rows[0]) {
+      // A row exists but its updated_at didn't match -- someone else
+      // changed it since the caller last loaded it.
+      return { stale: true };
+    }
+    // No row yet at all -- expectedUpdatedAt is meaningless for a first
+    // declaration; fall through to the plain insert below.
+  }
+
   const result = await client.query(
     `INSERT INTO centre_daily_inputs (
        id, centre_id, service_date, weighing_mode,
@@ -86,8 +133,9 @@ async function upsertDailyInputs(client, centreId, serviceDate, inputs) {
        undispatched_tonnes = EXCLUDED.undispatched_tonnes,
        avg_truck_load_tonnes = EXCLUDED.avg_truck_load_tonnes,
        moisture_meter_count = EXCLUDED.moisture_meter_count,
-       moisture_tests_per_meter_per_day = EXCLUDED.moisture_tests_per_meter_per_day
-     RETURNING id`,
+       moisture_tests_per_meter_per_day = EXCLUDED.moisture_tests_per_meter_per_day,
+       updated_at = now()
+     RETURNING id, updated_at`,
     [
       crypto.randomUUID(), centreId, serviceDate, inputs.weighingMode,
       inputs.weighbridgeOperatingMinutes, inputs.weighbridgeAvgCycleMinutes, inputs.secondsPerBag, inputs.avgBagsPerLot,
@@ -96,7 +144,7 @@ async function upsertDailyInputs(client, centreId, serviceDate, inputs) {
       inputs.moistureMeterCount, inputs.moistureTestsPerMeterPerDay,
     ]
   );
-  return result.rows[0].id;
+  return { id: result.rows[0].id, updatedAt: result.rows[0].updated_at, stale: false };
 }
 
 // Computes today's authoritative capacity straight from

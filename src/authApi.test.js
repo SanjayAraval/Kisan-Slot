@@ -125,6 +125,72 @@ describe('POST /api/auth/login (officers/operators)', () => {
     expect(unknownId.status).toBe(401);
     expect(wrongPassword.body.message).toBe(unknownId.body.message);
   });
+
+  describe('lockout after repeated failed attempts', () => {
+    test('the 11th failed attempt within the window is locked out, not just another 401', async () => {
+      const { app, pool } = setup();
+      const centreId = await insertCentre(pool);
+      await insertEmployee(pool, { employeeId: 'CO-LOCK-001', password: 'correct-horse', centreId });
+
+      let last;
+      for (let i = 0; i < 10; i++) {
+        last = await request(app).post('/api/auth/login').send({ employeeId: 'CO-LOCK-001', password: 'wrong' });
+        expect(last.status).toBe(401);
+      }
+
+      const eleventh = await request(app).post('/api/auth/login').send({ employeeId: 'CO-LOCK-001', password: 'wrong' });
+      expect(eleventh.status).toBe(429);
+      expect(eleventh.body.status).toBe('TOO_MANY_ATTEMPTS');
+    });
+
+    test('a locked-out account is refused even with the correct password', async () => {
+      const { app, pool } = setup();
+      const centreId = await insertCentre(pool);
+      await insertEmployee(pool, { employeeId: 'CO-LOCK-002', password: 'correct-horse', centreId });
+
+      for (let i = 0; i < 10; i++) {
+        await request(app).post('/api/auth/login').send({ employeeId: 'CO-LOCK-002', password: 'wrong' });
+      }
+
+      const res = await request(app).post('/api/auth/login').send({ employeeId: 'CO-LOCK-002', password: 'correct-horse' });
+      expect(res.status).toBe(429);
+    });
+
+    test('failed attempts against one employee id do not lock out another', async () => {
+      const { app, pool } = setup();
+      const centreId = await insertCentre(pool);
+      await insertEmployee(pool, { employeeId: 'CO-LOCK-003', password: 'correct-horse', centreId });
+      await insertEmployee(pool, { employeeId: 'CO-LOCK-004', password: 'also-correct', centreId });
+
+      for (let i = 0; i < 10; i++) {
+        await request(app).post('/api/auth/login').send({ employeeId: 'CO-LOCK-003', password: 'wrong' });
+      }
+
+      const res = await request(app).post('/api/auth/login').send({ employeeId: 'CO-LOCK-004', password: 'also-correct' });
+      expect(res.status).toBe(200);
+    });
+
+    test('a successful login before the threshold resets the count for that account', async () => {
+      const { app, pool } = setup();
+      const centreId = await insertCentre(pool);
+      await insertEmployee(pool, { employeeId: 'CO-LOCK-005', password: 'correct-horse', centreId });
+
+      for (let i = 0; i < 9; i++) {
+        await request(app).post('/api/auth/login').send({ employeeId: 'CO-LOCK-005', password: 'wrong' });
+      }
+      const success = await request(app).post('/api/auth/login').send({ employeeId: 'CO-LOCK-005', password: 'correct-horse' });
+      expect(success.status).toBe(200);
+
+      // Another 9 failures right after -- if the earlier near-miss count
+      // had carried over, this 9th would already be the account's 18th
+      // failure and it'd already be locked; it shouldn't be.
+      let last;
+      for (let i = 0; i < 9; i++) {
+        last = await request(app).post('/api/auth/login').send({ employeeId: 'CO-LOCK-005', password: 'wrong' });
+      }
+      expect(last.status).toBe(401);
+    });
+  });
 });
 
 describe('POST /api/farmers/register', () => {

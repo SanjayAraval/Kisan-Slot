@@ -132,7 +132,14 @@ function createApp(pool, { now = todayInIST } = {}) {
       try {
         capacity = await computeCentreDayCapacity(client, centreId, date);
         if (!capacity) {
-          return res.status(404).json({ status: 'NOT_FOUND', message: 'centre has no operating data for this date' });
+          const centreResult = await client.query('SELECT id FROM centres WHERE id = $1', [centreId]);
+          if (!centreResult.rows[0]) {
+            return res.status(404).json({ status: 'NOT_FOUND', message: 'centre not found' });
+          }
+          return res.status(404).json({
+            status: 'NOT_FOUND',
+            message: `No procurement capacity has been declared for this centre on ${date} yet -- try a different date.`,
+          });
         }
         const existing = await client.query(
           'SELECT bags_booked FROM centre_day WHERE centre_id = $1 AND service_date = $2',

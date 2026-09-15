@@ -86,10 +86,22 @@ async function attemptBooking(client, { farmerId, quintals, centreId, date }) {
     };
   }
 
-  // Step 3: today's authoritative capacity, computed live.
+  // Step 3: today's authoritative capacity, computed live. A slot is a
+  // promise about capacity (see CLAUDE.md) -- with no declaration on file
+  // there is no capacity to promise, so this blocks outright rather than
+  // falling back to any assumed/baseline numbers. Distinguishes an
+  // unknown centre from a real one nobody has declared for yet, since a
+  // farmer/officer needs a different next step for each.
   const capacity = await computeCentreDayCapacity(client, centreId, date);
   if (!capacity) {
-    return { type: 'NOT_FOUND', message: 'centre has no operating data for this date' };
+    const centreResult = await client.query('SELECT id FROM centres WHERE id = $1', [centreId]);
+    if (!centreResult.rows[0]) {
+      return { type: 'NOT_FOUND', message: 'centre not found' };
+    }
+    return {
+      type: 'NOT_FOUND',
+      message: `No procurement capacity has been declared for this centre on ${date} yet -- try a different date.`,
+    };
   }
   const centreDayRow = await upsertCentreDay(client, centreId, date, capacity);
   const bagsNeeded = round(quintals * BAGS_PER_QUINTAL, 2);

@@ -102,7 +102,7 @@ describe('POST /api/bookings', () => {
     expect(res.body.status).toBe('NOT_FOUND');
   });
 
-  test('unknown centre (valid uuid, no such centre) returns 404, not a raw DB 500', async () => {
+  test('unknown centre (valid uuid, no such centre) returns 404 with a distinct message, not a raw DB 500', async () => {
     const { app, agent, pool } = setup();
     const farmerId = await insertFarmerWithLand(pool, { extentAcres: 5 });
 
@@ -112,6 +112,7 @@ describe('POST /api/bookings', () => {
 
     expect(res.status).toBe(404);
     expect(res.body.status).toBe('NOT_FOUND');
+    expect(res.body.message).toBe('centre not found'); // distinct from the "no declaration yet" message below
   });
 
   test('quantity of zero, negative or non-numeric is a 400, not booked', async () => {
@@ -211,7 +212,7 @@ describe('POST /api/bookings', () => {
     expect(bookings.rowCount).toBe(0);
   });
 
-  test('centre with no operating data for that date -> 404', async () => {
+  test('a centre with no declaration on file for that date blocks the booking outright -- never against assumed/baseline capacity', async () => {
     const { app, agent, pool } = setup();
     const centreId = await insertCentre(pool);
     const farmerId = await insertFarmerWithLand(pool, { extentAcres: 2 });
@@ -220,6 +221,10 @@ describe('POST /api/bookings', () => {
 
     expect(res.status).toBe(404);
     expect(res.body.status).toBe('NOT_FOUND');
+    expect(res.body.message).toMatch(/no procurement capacity has been declared/i);
+
+    const bookings = await pool.query('SELECT * FROM bookings');
+    expect(bookings.rowCount).toBe(0);
   });
 
   test('booking that fits succeeds: creates a booking, a token, and decrements remaining capacity', async () => {
@@ -380,12 +385,23 @@ describe('GET /api/centres/:id/availability', () => {
     expect(res.body.remaining).toBe(res.body.bookableSlots - 1);
   });
 
-  test('404s when the centre has no operating data for that date', async () => {
+  test('404s with a clear message when the centre has no declaration on file for that date', async () => {
     const { app, agent, pool } = setup();
     const centreId = await insertCentre(pool);
 
     const res = await agent.get(`/api/centres/${centreId}/availability`).query({ date: DATE });
     expect(res.status).toBe(404);
+    expect(res.body.message).toMatch(/no procurement capacity has been declared/i);
+  });
+
+  test('404s with a distinct message for a centre that does not exist at all', async () => {
+    const { app, agent } = setup();
+
+    const res = await agent
+      .get('/api/centres/00000000-0000-0000-0000-000000000000/availability')
+      .query({ date: DATE });
+    expect(res.status).toBe(404);
+    expect(res.body.message).toBe('centre not found');
   });
 
   test('400s without a date query param', async () => {

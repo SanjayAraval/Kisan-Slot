@@ -16,6 +16,7 @@ const {
 } = require('./authService');
 const { getUser } = require('./authMiddleware');
 const { normalizeMobile, validateMobile } = require('../public/validation');
+const { isLockedOut, recordFailedLoginAttempt, clearFailedLoginAttempts } = require('./loginRateLimiter');
 
 const DEMO_EMPLOYEE_ROLES = ['centre_officer', 'district_officer', 'operator'];
 
@@ -125,10 +126,21 @@ function createAuthRoutes(pool) {
   });
 
   // Officers and assisted operators: employee ID + password, never email.
+  // Locked out after MAX_FAILED_ATTEMPTS failures within LOCKOUT_WINDOW_MS
+  // for that employeeId -- see loginRateLimiter.js. Farmers never reach
+  // this route (mobile OTP instead), so this is the only login surface
+  // worth brute-forcing.
   router.post('/login', async (req, res, next) => {
     const { employeeId, password } = req.body || {};
     if (!isNonEmptyString(employeeId) || !isNonEmptyString(password)) {
       return res.status(400).json({ status: 'BAD_REQUEST', message: 'employeeId and password are required' });
+    }
+
+    if (isLockedOut(employeeId)) {
+      return res.status(429).json({
+        status: 'TOO_MANY_ATTEMPTS',
+        message: 'Too many failed login attempts for this employee ID. Try again in a few minutes.',
+      });
     }
 
     try {
@@ -141,9 +153,11 @@ function createAuthRoutes(pool) {
       // Same "invalid credentials" message either way -- never reveal
       // whether the employee ID itself exists.
       if (!emp || !verifyPassword(password, emp.password_hash)) {
+        recordFailedLoginAttempt(employeeId);
         return res.status(401).json({ status: 'UNAUTHORIZED', message: 'invalid employee ID or password' });
       }
 
+      clearFailedLoginAttempts(employeeId);
       const token = signToken({ role: emp.role, employeeDbId: emp.id, name: emp.name, centreId: emp.centre_id, district: emp.district });
       res.cookie(COOKIE_NAME, token, COOKIE_OPTIONS);
       return res.status(200).json({ status: 'OK', role: emp.role, name: emp.name, centreId: emp.centre_id, district: emp.district });

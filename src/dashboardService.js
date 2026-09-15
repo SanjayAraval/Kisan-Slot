@@ -190,8 +190,13 @@ async function releaseBags(client, centreId, date, additionalBags) {
     return { type: 'NOT_FOUND', message: 'no declaration on file for this centre and date' };
   }
 
+  // Bumps updated_at along with the stock change -- this is exactly the
+  // kind of out-of-band edit upsertDailyInputs's expectedUpdatedAt check
+  // exists to catch, so a declaration form loaded before this release
+  // gets rejected as stale if resubmitted afterwards instead of silently
+  // overwriting it.
   await client.query(
-    'UPDATE centre_daily_inputs SET gunny_bags_available = gunny_bags_available + $1::int WHERE centre_id = $2 AND service_date = $3',
+    'UPDATE centre_daily_inputs SET gunny_bags_available = gunny_bags_available + $1::int, updated_at = now() WHERE centre_id = $2 AND service_date = $3',
     [additionalBags, centreId, date]
   );
 

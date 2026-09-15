@@ -248,12 +248,19 @@ function App() {
     setSubmitting(true);
     setError(null);
     try {
+      // expectedUpdatedAt is whatever this form last loaded -- if the
+      // dashboard released bags (or another officer declared) since
+      // then, the server rejects this as stale instead of silently
+      // overwriting that change.
       const { body } = await fetchJson(`/api/centres/${centreId}/declaration`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...inputs, date }),
+        body: JSON.stringify({ ...inputs, date, expectedUpdatedAt: inputs.updatedAt || null }),
       });
       setResult(body);
+      // Carry the new version forward so a second submit in the same
+      // session (without reloading) isn't rejected against itself.
+      setInputs({ ...inputs, updatedAt: body.updatedAt });
     } catch (err) {
       setError(err.message);
     } finally {

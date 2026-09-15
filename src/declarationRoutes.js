@@ -132,7 +132,20 @@ function createDeclarationRoutes(pool) {
         return res.status(404).json({ status: 'NOT_FOUND', message: 'centre not found' });
       }
 
-      await upsertDailyInputs(client, centreId, body.date, body);
+      // expectedUpdatedAt (when the client sends it back from a prior
+      // GET) guards against a stale resubmit -- e.g. bags were released
+      // from the district dashboard after this form was loaded, and
+      // submitting the now-outdated form would otherwise silently wipe
+      // that out. See capacityService.upsertDailyInputs.
+      const upsertResult = await upsertDailyInputs(client, centreId, body.date, body, body.expectedUpdatedAt || null);
+      if (upsertResult.stale) {
+        await client.query('ROLLBACK');
+        client.release();
+        return res.status(409).json({
+          status: 'CONFLICT',
+          message: 'This declaration was changed by someone else (e.g. bags released from the district dashboard) since you loaded it. Reload and try again.',
+        });
+      }
 
       let capacity;
       try {
@@ -161,6 +174,7 @@ function createDeclarationRoutes(pool) {
         bindingConstraints: capacity.engineResult.bindingConstraints,
         constraints: capacity.engineResult.constraints,
         recommendedAction: RECOMMENDED_ACTIONS[capacity.engineResult.bindingConstraint] || null,
+        updatedAt: upsertResult.updatedAt,
       });
     } catch (err) {
       await client.query('ROLLBACK').catch(() => {});

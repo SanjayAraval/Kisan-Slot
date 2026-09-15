@@ -324,7 +324,7 @@
     <div class="errmsg" data-t="e_crop">Please choose a crop</div>
 
     <div class="actions">
-      <button class="btn btn-ghost" onclick="go(0)" data-t="b_back">Back</button>
+      <button class="btn btn-ghost" onclick="history.back()" data-t="b_back">Back</button>
       <button class="btn btn-primary" onclick="nextFrom(1)" data-t="b_continue">Continue</button>
     </div>
   </section>
@@ -353,7 +353,7 @@
     <div class="errmsg" id="qtyErr" data-t="e_qty">Quantity looks too high for this land size</div>
 
     <div class="actions">
-      <button class="btn btn-ghost" onclick="go(1)" data-t="b_back">Back</button>
+      <button class="btn btn-ghost" onclick="history.back()" data-t="b_back">Back</button>
       <button class="btn btn-primary" onclick="nextFrom(2)" data-t="b_continue">Continue</button>
     </div>
   </section>
@@ -380,7 +380,7 @@
     <div class="errmsg" data-t="e_ifsc">Enter a valid IFSC (e.g. SBIN0001234)</div>
 
     <div class="actions">
-      <button class="btn btn-ghost" onclick="go(2)" data-t="b_back">Back</button>
+      <button class="btn btn-ghost" onclick="history.back()" data-t="b_back">Back</button>
       <button class="btn btn-primary" onclick="nextFrom(3)" data-t="b_review">Review</button>
     </div>
   </section>
@@ -394,7 +394,7 @@
       </div>
       <div class="review-list" id="reviewList"></div>
       <div class="actions">
-        <button class="btn btn-ghost" onclick="go(3)" data-t="b_back">Back</button>
+        <button class="btn btn-ghost" onclick="history.back()" data-t="b_back">Back</button>
         <button class="btn btn-primary" onclick="runVerify()" data-t="b_verify">Verify &amp; register</button>
       </div>
     </div>
@@ -601,7 +601,16 @@ function otpHop(el,i){
 }
 
 /* ---------- navigation ---------- */
-function go(n){
+// Every step's fields already live in the DOM the whole time (each
+// section is just shown/hidden, never rebuilt) -- so an in-app Back
+// button was never the problem. The phone's/browser's own Back button
+// was: with no history entry per step, it navigated straight off this
+// page (unloading it, and every field with it) instead of stepping back
+// one screen. Pushing a history entry per step and intercepting
+// popstate makes the hardware/browser Back button behave exactly like
+// the in-app one -- same go(), same untouched DOM, nothing lost.
+function go(n,opts){
+  opts=opts||{};
   step=n;
   document.querySelectorAll('[data-panel]').forEach(p=>p.classList.toggle('hide',+p.dataset.panel!==n));
   document.querySelectorAll('.step').forEach(s=>{
@@ -611,7 +620,16 @@ function go(n){
   });
   document.getElementById('prog').style.width=(n/4*84)+'%';
   window.scrollTo({top:0,behavior:'smooth'});
+  if(opts.initial){
+    history.replaceState({regStep:n},'');
+  }else if(!opts.fromPopstate){
+    history.pushState({regStep:n},'');
+  }
 }
+window.addEventListener('popstate',(e)=>{
+  const n=(e.state && typeof e.state.regStep==='number')?e.state.regStep:0;
+  go(n,{fromPopstate:true});
+});
 
 /* ---------- Step 1: OTP (real backend -- mocked SMS, real verification) ---------- */
 async function sendOrVerifyOtp(){
@@ -835,7 +853,7 @@ function resetAll(){
 
 /* init */
 applyLang();
-go(0);
+go(0,{initial:true});
 initSession();
 </script>
 </body>
