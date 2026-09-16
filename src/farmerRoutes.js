@@ -145,22 +145,25 @@ function createFarmerRoutes(pool) {
   // Combines "booking status" and "lot status" into one read -- the
   // STATUS screen needs both together (which centre/date, and how far
   // the lot has progressed) and there's no reason to make the client
-  // round-trip twice for it.
+  // round-trip twice for it. Returns every upcoming booking (a farmer can
+  // hold more than one, on different dates -- see bookingService.
+  // hasActiveBookingOnDate), not just the latest.
   router.get('/farmers/:id/status', requireAuth, requireFarmerSelfOrOfficer((req) => req.params.id), async (req, res, next) => {
     try {
-      const status = await loadLotStatus(pool, req.params.id);
-      if (!status) return res.status(404).json({ status: 'NOT_FOUND', message: 'no bookings on file for this farmer' });
-      return res.status(200).json(status);
+      const bookings = await loadLotStatus(pool, req.params.id);
+      if (!bookings) return res.status(404).json({ status: 'NOT_FOUND', message: 'no upcoming bookings on file for this farmer' });
+      return res.status(200).json(bookings);
     } catch (err) {
       return next(err);
     }
   });
 
+  // Every completed lot's bill, not just the latest.
   router.get('/farmers/:id/jform', requireAuth, requireFarmerSelfOrOfficer((req) => req.params.id), async (req, res, next) => {
     try {
-      const jForm = await loadJForm(pool, req.params.id);
-      if (!jForm) return res.status(404).json({ status: 'NOT_FOUND', message: 'no J-Form issued yet for this farmer' });
-      return res.status(200).json(jForm);
+      const jForms = await loadJForm(pool, req.params.id);
+      if (!jForms) return res.status(404).json({ status: 'NOT_FOUND', message: 'no J-Form issued yet for this farmer' });
+      return res.status(200).json(jForms);
     } catch (err) {
       return next(err);
     }

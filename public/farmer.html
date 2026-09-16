@@ -143,6 +143,7 @@ const TRANSLATIONS = {
     nowServingLabel: 'Now serving',
     etaLabel: '~{n} min wait',
     loadingStatus: 'Loading status…',
+    todayBadge: 'Today',
     noBookingsYet: 'No bookings yet.',
     bookSlotBtn: 'Book a slot',
     rowToken: 'Token',
@@ -254,6 +255,7 @@ const TRANSLATIONS = {
     nowServingLabel: 'अभी सेवा में',
     etaLabel: '~{n} मिनट प्रतीक्षा',
     loadingStatus: 'स्थिति लोड हो रही है…',
+    todayBadge: 'आज',
     noBookingsYet: 'अभी तक कोई बुकिंग नहीं।',
     bookSlotBtn: 'स्लॉट बुक करें',
     rowToken: 'टोकन',
@@ -365,6 +367,7 @@ const TRANSLATIONS = {
     nowServingLabel: 'ప్రస్తుతం సేవలో',
     etaLabel: '~{n} నిమిషాల వేచి ఉండాలి',
     loadingStatus: 'స్థితి లోడ్ అవుతోంది…',
+    todayBadge: 'ఈరోజు',
     noBookingsYet: 'ఇంకా బుకింగ్‌లు లేవు.',
     bookSlotBtn: 'స్లాట్ బుక్ చేయండి',
     rowToken: 'టోకెన్',
@@ -1178,9 +1181,50 @@ function Timeline({ stages }) {
   );
 }
 
-function StatusScreen({ farmer, onSwitchTab }) {
+// One upcoming booking's full card: date (with a "today" badge when it
+// is), its own gate pass, progress timeline, and moisture reading -- a
+// farmer can hold more than one of these at once (see
+// bookingService.hasActiveBookingOnDate: one active booking per date,
+// never one overall), so the STATUS screen is a list of these, not a
+// single booking.
+function BookingStatusCard({ entry, farmer }) {
   const t = useT();
   const lang = useLang();
+  const { booking, stages, moisture, isToday } = entry;
+  // Same "active" definition the server itself uses to block a second
+  // booking on the same date (see bookingService.hasActiveBookingOnDate)
+  // -- once checked in at the gate the token has already done its job,
+  // but a farmer who booked today and is coming back tomorrow needs to
+  // be able to pull it back up here, not just on the confirmation screen
+  // they saw once at booking time.
+  const isActiveBooking = ACTIVE_BOOKING_STATUSES.includes(booking.status);
+
+  return h('div', { className: 'mb-6 last:mb-0' },
+    h('div', { className: 'flex items-center justify-between gap-2 mb-2' },
+      h('div', { className: 'font-extrabold flex items-center gap-2' },
+        h('i', { className: 'fa-solid fa-calendar-day text-kisan-ink/40' }),
+        formatDate(booking.serviceDate)
+      ),
+      isToday && h(Badge, { tone: 'success' }, t('todayBadge'))
+    ),
+    isActiveBooking && h('div', { className: 'mb-3' }, h(QRTicket, { booking, farmer })),
+    booking.status === 'checked_in' && h('div', { className: 'mb-3' }, h(LiveQueueCard, { booking })),
+    h(Card, null,
+      h(Row, {
+        k: t('rowCentre'),
+        v: `${centreDisplayName({ name: booking.centreName, nameHi: booking.centreNameHi, nameTe: booking.centreNameTe }, lang)} (${booking.centreCode})`,
+      }),
+      h(Row, { k: t('rowQuantity'), v: `${booking.declaredQuantityQuintals} ${t('unitQuintal')}` })
+    ),
+    h(SectionHeading, { icon: 'fa-route' }, t('sectionProgress')),
+    h(Card, null, h(Timeline, { stages })),
+    h(SectionHeading, { icon: 'fa-droplet' }, t('sectionMoisture')),
+    h(MoistureCard, { moisture })
+  );
+}
+
+function StatusScreen({ farmer, onSwitchTab }) {
+  const t = useT();
   const [state, setState] = useState({ loading: true, data: null, notFound: false, error: null });
 
   useEffect(() => {
@@ -1210,29 +1254,10 @@ function StatusScreen({ farmer, onSwitchTab }) {
     );
   }
 
-  const { booking, stages, moisture } = state.data;
-  // Same "active" definition the server itself uses to block a second
-  // booking on the same date (see bookingService.hasActiveBookingOnDate)
-  // -- once checked in at the gate the token has already done its job,
-  // but a farmer who booked today and is coming back tomorrow needs to
-  // be able to pull it back up here, not just on the confirmation screen
-  // they saw once at booking time.
-  const isActiveBooking = ACTIVE_BOOKING_STATUSES.includes(booking.status);
+  // Already sorted by service date, nearest first (see farmerService.
+  // loadUpcomingBookings) -- rendered in that order as-is.
   return h('div', null,
-    isActiveBooking && h('div', { className: 'mb-4' }, h(QRTicket, { booking, farmer })),
-    booking.status === 'checked_in' && h('div', { className: 'mb-4' }, h(LiveQueueCard, { booking })),
-    h(Card, null,
-      h(Row, {
-        k: t('rowCentre'),
-        v: `${centreDisplayName({ name: booking.centreName, nameHi: booking.centreNameHi, nameTe: booking.centreNameTe }, lang)} (${booking.centreCode})`,
-      }),
-      h(Row, { k: t('rowDate'), v: formatDate(booking.serviceDate) }),
-      h(Row, { k: t('rowQuantity'), v: `${booking.declaredQuantityQuintals} ${t('unitQuintal')}` })
-    ),
-    h(SectionHeading, { icon: 'fa-route' }, t('sectionProgress')),
-    h(Card, null, h(Timeline, { stages })),
-    h(SectionHeading, { icon: 'fa-droplet' }, t('sectionMoisture')),
-    h(MoistureCard, { moisture })
+    state.data.map((entry) => h(BookingStatusCard, { key: entry.booking.id, entry, farmer }))
   );
 }
 
@@ -1271,11 +1296,28 @@ function JFormScreen({ farmer, onSwitchTab }) {
     );
   }
 
-  const j = state.data;
+  // Newest bill first (see farmerService.loadCompletedJForms) -- rendered
+  // in that order as-is.
   return h('div', null,
+    state.data.map((j) => h(JFormCard, { key: j.jFormNumber, j }))
+  );
+}
+
+// One completed lot's bill -- a farmer can complete more than one lot
+// across a season (different dates, possibly different centres), so the
+// J-FORM screen is a list of these, not a single most-recent bill.
+function JFormCard({ j }) {
+  const t = useT();
+  const lang = useLang();
+  return h('div', { className: 'mb-6 last:mb-0' },
     h(Card, null,
       h(Row, { k: t('rowJForm'), v: j.jFormNumber }),
       h(Row, { k: t('rowIssued'), v: formatDateTime(j.issuedAt) }),
+      h(Row, {
+        k: t('rowCentre'),
+        v: `${centreDisplayName({ name: j.centreName, nameHi: j.centreNameHi, nameTe: j.centreNameTe }, lang)} (${j.centreCode})`,
+      }),
+      h(Row, { k: t('rowDate'), v: formatDate(j.serviceDate) }),
       h(Row, { k: t('rowNetWeight'), v: `${j.quintalsProcured} ${t('unitQuintal')}` }),
       h(Row, { k: t('rowMspRate'), v: `${formatINR(j.mspRate)}/${t('unitQuintal')}` }),
       h(Row, { k: t('rowGrossValue'), v: formatINR(j.grossAmount) })

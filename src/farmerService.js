@@ -2,6 +2,7 @@
 
 const crypto = require('crypto');
 const { YIELD_QUINTALS_PER_ACRE, OVER_DECLARE_CAP_MULTIPLIER, MOISTURE_ACCEPT_MAX_PCT } = require('./constants');
+const { todayInIST } = require('./todayInIST');
 
 function round(value, decimals = 2) {
   const factor = 10 ** decimals;
@@ -81,7 +82,15 @@ async function loadFarmerDetail(pool, farmerId) {
   };
 }
 
-async function loadLatestBooking(pool, farmerId) {
+// Every booking still in flight for this farmer -- not yet at a terminal
+// dead end (cancelled/no-show/deferred/rejected) and not yet billed. A
+// farmer can hold one of these per date (see bookingService.
+// hasActiveBookingOnDate), never per farmer, so this is routinely more
+// than one row. Ordered by service date so the STATUS screen can render
+// them nearest-first and the caller can flag which one is today's.
+// Excludes anything with an active J-Form -- that lot has moved on to
+// the J-FORM step (see loadCompletedJForms) and stops being "upcoming".
+async function loadUpcomingBookings(pool, farmerId) {
   const result = await pool.query(
     `SELECT b.id, b.token, b.status, b.declared_quantity_quintals, b.bags_reserved,
             b.booked_at, b.checked_in_at, b.completed_at,
@@ -90,12 +99,14 @@ async function loadLatestBooking(pool, farmerId) {
      FROM bookings b
      JOIN centre_day cd ON cd.id = b.centre_day_id
      JOIN centres c ON c.id = cd.centre_id
+     LEFT JOIN j_forms jf ON jf.booking_id = b.id AND jf.status = 'active'
      WHERE b.farmer_id = $1
-     ORDER BY b.booked_at DESC
-     LIMIT 1`,
+       AND b.status IN ('booked', 'checked_in', 'completed')
+       AND jf.id IS NULL
+     ORDER BY cd.service_date ASC, b.booked_at ASC`,
     [farmerId]
   );
-  return result.rows[0] || null;
+  return result.rows;
 }
 
 const STAGE_LABELS = {
@@ -107,42 +118,37 @@ const STAGE_LABELS = {
   payment: 'Payment',
 };
 
-// The STATUS step's six-stage timeline for a farmer's most recent
-// booking, plus the moisture and weighment detail to go with it. Every
-// timestamp is read straight from the lot workflow (lot_quality_checks,
-// lot_weighments, j_forms) -- nothing here is inferred or re-derived.
-// Two stages have no dedicated event in the schema: "acknowledgement" is
-// shown at the booking's completed_at (set by the same recordWeighment
-// call that produces the weighment, since there's no separate
-// sign-off step recorded); "payment" (PFMS settlement) isn't tracked
-// anywhere in this system yet, so it's always shown as not reached.
-async function loadLotStatus(pool, farmerId) {
-  const booking = await loadLatestBooking(pool, farmerId);
-  if (!booking) return null;
-
-  const [qualityResult, weighmentResult, jFormResult] = await Promise.all([
+// One booking's six-stage timeline, plus the moisture and weighment
+// detail to go with it. Every timestamp is read straight from the lot
+// workflow (lot_quality_checks, lot_weighments) -- nothing here is
+// inferred or re-derived. Two stages have no dedicated event in the
+// schema: "acknowledgement" is shown at the booking's completed_at (set
+// by the same recordWeighment call that produces the weighment, since
+// there's no separate sign-off step recorded); "payment" (PFMS
+// settlement) isn't tracked anywhere in this system yet, so it's always
+// shown as not reached. "bill_raised" is always pending here too -- by
+// construction (see loadUpcomingBookings) a booking with an active
+// J-Form never reaches this function; that timestamp lives on the
+// J-FORM step instead.
+async function loadBookingProgress(pool, booking) {
+  const [qualityResult, weighmentResult] = await Promise.all([
     pool.query(
       `SELECT meter_id, calibration_date, sample_1, sample_2, sample_3, mean_moisture, verdict, tested_at
        FROM lot_quality_checks WHERE booking_id = $1`,
       [booking.id]
     ),
     pool.query('SELECT mode, net_kg, weighed_at FROM lot_weighments WHERE booking_id = $1', [booking.id]),
-    pool.query(
-      "SELECT id, j_form_number, issued_at FROM j_forms WHERE booking_id = $1 AND status = 'active'",
-      [booking.id]
-    ),
   ]);
 
   const quality = qualityResult.rows[0] || null;
   const weighment = weighmentResult.rows[0] || null;
-  const jForm = jFormResult.rows[0] || null;
 
   const stages = [
     { key: 'gate_entry', at: booking.checked_in_at || null },
     { key: 'moisture_test', at: quality ? quality.tested_at : null },
     { key: 'weighment', at: weighment ? weighment.weighed_at : null },
     { key: 'acknowledgement', at: booking.completed_at || null },
-    { key: 'bill_raised', at: jForm ? jForm.issued_at : null },
+    { key: 'bill_raised', at: null },
     { key: 'payment', at: null },
   ].map((s) => ({ key: s.key, label: STAGE_LABELS[s.key], at: s.at, done: s.at !== null }));
 
@@ -179,49 +185,94 @@ async function loadLotStatus(pool, farmerId) {
   };
 }
 
-// The J-FORM step's view of a farmer's most recent booking. net payable
-// and the effective per-quintal rate are always derived here from the
-// stored gross_amount and itemised payment_deductions -- matching the
-// schema comment on payment_deductions ("gross_amount - sum(amount) gives
-// net payable") -- never persisted, since nothing on j_forms stores them.
+// The STATUS step's view: every upcoming booking for this farmer, each
+// with its own progress timeline, ordered by service date -- a farmer
+// can legitimately hold bookings at several centres on several dates
+// (one active per date, not one overall) and needs to see all of them,
+// not just whichever was booked most recently.
+async function loadLotStatus(pool, farmerId) {
+  const bookings = await loadUpcomingBookings(pool, farmerId);
+  if (bookings.length === 0) return null;
+
+  const today = todayInIST();
+  return Promise.all(
+    bookings.map(async (booking) => {
+      const progress = await loadBookingProgress(pool, booking);
+      return { ...progress, isToday: progress.booking.serviceDate === today };
+    })
+  );
+}
+
+// Every active J-Form issued against this farmer's bookings -- one per
+// completed lot, not just the latest, since a farmer can complete
+// several lots (on different dates, possibly different centres) across
+// a season. Newest bill first.
+async function loadCompletedJForms(pool, farmerId) {
+  const result = await pool.query(
+    `SELECT jf.id, jf.j_form_number, jf.quintals_procured, jf.msp_rate, jf.gross_amount, jf.issued_at,
+            b.id AS booking_id, b.token,
+            cd.service_date, c.name AS centre_name, c.name_hi AS centre_name_hi,
+            c.name_te AS centre_name_te, c.code AS centre_code
+     FROM j_forms jf
+     JOIN bookings b ON b.id = jf.booking_id
+     JOIN centre_day cd ON cd.id = b.centre_day_id
+     JOIN centres c ON c.id = cd.centre_id
+     WHERE b.farmer_id = $1 AND jf.status = 'active'
+     ORDER BY jf.issued_at DESC`,
+    [farmerId]
+  );
+  return result.rows;
+}
+
+// The J-FORM step's view: every completed lot's bill, not just the
+// latest. net payable and the effective per-quintal rate are always
+// derived here from the stored gross_amount and itemised
+// payment_deductions -- matching the schema comment on
+// payment_deductions ("gross_amount - sum(amount) gives net payable")
+// -- never persisted, since nothing on j_forms stores them.
 async function loadJForm(pool, farmerId) {
-  const booking = await loadLatestBooking(pool, farmerId);
-  if (!booking) return null;
+  const jForms = await loadCompletedJForms(pool, farmerId);
+  if (jForms.length === 0) return null;
 
-  const jFormResult = await pool.query(
-    `SELECT id, j_form_number, quintals_procured, msp_rate, gross_amount, issued_at
-     FROM j_forms WHERE booking_id = $1 AND status = 'active'`,
-    [booking.id]
-  );
-  const jForm = jFormResult.rows[0];
-  if (!jForm) return null;
-
-  const deductionsResult = await pool.query(
-    'SELECT deduction_type, amount, description FROM payment_deductions WHERE j_form_id = $1 ORDER BY created_at',
-    [jForm.id]
+  const deductionsResults = await Promise.all(
+    jForms.map((jForm) =>
+      pool.query(
+        'SELECT deduction_type, amount, description FROM payment_deductions WHERE j_form_id = $1 ORDER BY created_at',
+        [jForm.id]
+      )
+    )
   );
 
-  const grossAmount = Number(jForm.gross_amount);
-  const totalDeductions = round(deductionsResult.rows.reduce((sum, d) => sum + Number(d.amount), 0), 2);
-  const netPayable = round(grossAmount - totalDeductions, 2);
-  const quintalsProcured = Number(jForm.quintals_procured);
-  const mspRate = Number(jForm.msp_rate);
+  return jForms.map((jForm, i) => {
+    const grossAmount = Number(jForm.gross_amount);
+    const totalDeductions = round(deductionsResults[i].rows.reduce((sum, d) => sum + Number(d.amount), 0), 2);
+    const netPayable = round(grossAmount - totalDeductions, 2);
+    const quintalsProcured = Number(jForm.quintals_procured);
+    const mspRate = Number(jForm.msp_rate);
 
-  return {
-    jFormNumber: jForm.j_form_number,
-    issuedAt: jForm.issued_at,
-    quintalsProcured,
-    mspRate,
-    grossAmount,
-    deductions: deductionsResult.rows.map((d) => ({
-      type: d.deduction_type,
-      amount: Number(d.amount),
-      description: d.description,
-    })),
-    totalDeductions,
-    netPayable,
-    effectiveRatePerQuintal: quintalsProcured > 0 ? round(netPayable / quintalsProcured, 2) : null,
-  };
+    return {
+      jFormNumber: jForm.j_form_number,
+      issuedAt: jForm.issued_at,
+      bookingId: jForm.booking_id,
+      token: jForm.token,
+      centreName: jForm.centre_name,
+      centreNameHi: jForm.centre_name_hi,
+      centreNameTe: jForm.centre_name_te,
+      centreCode: jForm.centre_code,
+      serviceDate: toDateString(jForm.service_date),
+      quintalsProcured,
+      mspRate,
+      grossAmount,
+      deductions: deductionsResults[i].rows.map((d) => ({
+        type: d.deduction_type,
+        amount: Number(d.amount),
+        description: d.description,
+      })),
+      totalDeductions,
+      netPayable,
+      effectiveRatePerQuintal: quintalsProcured > 0 ? round(netPayable / quintalsProcured, 2) : null,
+    };
+  });
 }
 
 // The registration flow's live khasra lookup -- called as the operator/

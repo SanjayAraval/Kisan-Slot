@@ -178,6 +178,26 @@ describe('POST /api/bookings', () => {
     expect(bookings.rowCount).toBe(1); // the second attempt at centre B left no trace
   });
 
+  test('the same farmer can hold active bookings on two different dates -- the one-booking rule is per date, not per farmer', async () => {
+    const { app, agent, pool } = setup();
+    const centreId = await insertCentre(pool);
+    await insertDailyInputs(pool, { centreId, serviceDate: DATE });
+    await insertDailyInputs(pool, { centreId, serviceDate: NEXT_DATE });
+    const farmerId = await insertFarmerWithLand(pool, { extentAcres: 5 });
+
+    const first = await agent.post('/api/bookings').send({ farmerId, quintals: 10, centreId, date: DATE });
+    expect(first.status).toBe(201);
+
+    const second = await agent.post('/api/bookings').send({ farmerId, quintals: 10, centreId, date: NEXT_DATE });
+    expect(second.status).toBe(201);
+
+    const bookings = await pool.query(
+      "SELECT status FROM bookings WHERE farmer_id = $1 AND status IN ('booked', 'checked_in')",
+      [farmerId]
+    );
+    expect(bookings.rowCount).toBe(2);
+  });
+
   test('farmer with no land record -> NEEDS_OFFICER_REVIEW, not rejected', async () => {
     const { app, agent, pool } = setup();
     const centreId = await insertCentre(pool);
