@@ -14,6 +14,20 @@ function bagsToSlots(bags, bagsPerTruck) {
   return Math.floor(bags / bagsPerTruck);
 }
 
+function confirmationBody(token, date, centreCode) {
+  return `Your Kisan Slot booking is confirmed. Token ${token} at ${centreCode} on ${date}. Bring this token to the gate.`;
+}
+
+// Spoken counterpart to confirmationBody -- every SMS notification gets an
+// IVR one alongside it (see CLAUDE.md: critical path must work over SMS
+// *and* IVR), read aloud for a farmer who can't or won't read the text.
+// The token is read out digit by digit and letter by letter -- run
+// together, "MDK-01-0012" is not reliably parseable as spoken audio.
+function confirmationVoiceScript(token, date, centreCode) {
+  const spokenToken = token.split('').join(' ');
+  return `Namaste. This is an automated call from Kisan Slot. Your procurement slot at centre ${centreCode} on ${date} is confirmed. Your token is ${spokenToken}. Please bring this token to the gate. Thank you.`;
+}
+
 function addDays(dateStr, days) {
   const d = new Date(`${dateStr}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() + days);
@@ -167,6 +181,18 @@ async function attemptBooking(client, { farmerId, quintals, centreId, date }) {
 
   const { bags_booked: bagsBooked, bags_capacity: bagsCapacity } = claim.rows[0];
   const remainingBags = Number(bagsCapacity) - Number(bagsBooked);
+
+  const bookingId = bookingResult.rows[0].id;
+  await client.query(
+    `INSERT INTO messages (id, farmer_id, related_booking_id, channel, body)
+     VALUES ($1, $2, $3, 'sms', $4)`,
+    [crypto.randomUUID(), farmerId, bookingId, confirmationBody(token, date, centreCode)]
+  );
+  await client.query(
+    `INSERT INTO messages (id, farmer_id, related_booking_id, channel, body)
+     VALUES ($1, $2, $3, 'ivr', $4)`,
+    [crypto.randomUUID(), farmerId, bookingId, confirmationVoiceScript(token, date, centreCode)]
+  );
 
   return {
     type: 'BOOKED',

@@ -89,7 +89,7 @@ function createDeclarationRoutes(pool) {
           remainingByCentreId = new Map();
           for (const r of result.rows) {
             const remaining = await computeRemainingSlots(client, r.id, date);
-            remainingByCentreId.set(r.id, remaining ? remaining.remaining : 0);
+            remainingByCentreId.set(r.id, remaining ? { remaining: remaining.remaining, remainingBags: remaining.remainingBags } : { remaining: 0, remainingBags: 0 });
           }
         } finally {
           client.release();
@@ -108,7 +108,7 @@ function createDeclarationRoutes(pool) {
           // centre instead of a hardcoded or district-average location.
           latitude: Number(r.latitude),
           longitude: Number(r.longitude),
-          ...(remainingByCentreId ? { remaining: remainingByCentreId.get(r.id) } : {}),
+          ...(remainingByCentreId ? remainingByCentreId.get(r.id) : {}),
         }))
       );
     } catch (err) {

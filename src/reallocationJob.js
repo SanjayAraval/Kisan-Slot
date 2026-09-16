@@ -148,10 +148,19 @@ async function applyPlan(client, plan, today) {
   }
 
   for (const notification of plan.notifications) {
+    // Every deferral gets both an SMS and its spoken IVR counterpart --
+    // CLAUDE.md requires the critical path to work over SMS *and* IVR, so
+    // a farmer without a smartphone (or one who can't read the SMS) still
+    // gets the news by voice call, not just a text nobody follows up on.
     await client.query(
       `INSERT INTO messages (id, farmer_id, related_booking_id, channel, body)
        VALUES ($1, $2, $3, 'sms', $4)`,
       [crypto.randomUUID(), notification.farmerId, notification.relatedBookingId, notification.body]
+    );
+    await client.query(
+      `INSERT INTO messages (id, farmer_id, related_booking_id, channel, body)
+       VALUES ($1, $2, $3, 'ivr', $4)`,
+      [crypto.randomUUID(), notification.farmerId, notification.relatedBookingId, notification.voiceScript]
     );
   }
 

@@ -122,12 +122,13 @@ async function enrichReallocationPlan(pool, plan, date) {
 }
 
 // Recent queued notifications for the messages view -- every channel the
-// mock gateway supports (sms/ivr/app), not just what the reallocation job
-// itself produces (sms only, today). related_booking_id is only ever set
-// by the reallocation job's deferral notices; a plain OTP message has
-// none, so it can't be traced to a centre/district -- shown unscoped
-// rather than dropped, since there's no farmer-district field to filter
-// on either (see CLAUDE.md: single-district demo scope).
+// mock gateway supports (sms/ivr/app): a booking confirmation and a
+// deferral both queue a matching SMS/IVR pair (see bookingService and
+// reallocationJob), and a plain OTP message stays SMS-only. related_
+// booking_id is only set on booking-confirmation and deferral notices; an
+// OTP message has none, so it can't be traced to a centre/district --
+// shown unscoped rather than dropped, since there's no farmer-district
+// field to filter on either (see CLAUDE.md: single-district demo scope).
 async function loadRecentMessages(pool, district, limit = 100) {
   const result = await pool.query(
     `SELECT m.id, m.farmer_id, m.mobile, m.related_booking_id, m.channel, m.body, m.status, m.created_at,

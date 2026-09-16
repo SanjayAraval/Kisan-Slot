@@ -186,13 +186,18 @@ async function computeRemainingSlots(client, centreId, serviceDate) {
     [centreId, serviceDate]
   );
   const bagsBooked = existing.rows[0] ? Number(existing.rows[0].bags_booked) : 0;
-  const remainingBags = capacity.bagsCapacity - bagsBooked;
-  const remaining = Math.max(0, Math.floor(remainingBags / capacity.bagsPerTruck));
+  const remainingBags = Math.max(0, capacity.bagsCapacity - bagsBooked);
+  const remaining = Math.floor(remainingBags / capacity.bagsPerTruck);
 
   return {
     totalCapacity: capacity.engineResult.totalCapacity,
     bookableCapacity: capacity.engineResult.bookableCapacity,
     remaining,
+    // Sub-truck-lot headroom that `remaining` (a whole-truck count) rounds
+    // away -- a centre can still take a small enough booking against this
+    // even when `remaining` reads 0. See attemptBooking, which claims
+    // capacity in bags, never in whole trucks.
+    remainingBags,
   };
 }
 

@@ -903,12 +903,15 @@ function BookScreen({ farmer, onSwitchTab }) {
     return () => { cancelled = true; };
   }, [date]);
 
-  // Only centres with at least one bookable slot left for this date --
-  // everything else would just 200 back NO_CAPACITY on submit, which is
-  // handled fine (see below) but there's no reason to offer a pick that's
-  // guaranteed to fail when the server already told us which ones aren't.
+  // Only centres with real bag headroom left for this date -- everything
+  // else would just 200 back NO_CAPACITY on submit, which is handled fine
+  // (see below) but there's no reason to offer a pick that's guaranteed to
+  // fail when the server already told us which ones aren't. Filtered on
+  // remainingBags, not the whole-truck-rounded `remaining` -- a centre can
+  // be down to less than one truck's worth and still take a small enough
+  // booking (attemptBooking claims capacity in bags, never whole trucks).
   const availableCentres = useMemo(
-    () => (dateCentres || []).filter((c) => (c.remaining || 0) > 0),
+    () => (dateCentres || []).filter((c) => (c.remainingBags || 0) > 0),
     [dateCentres]
   );
 

@@ -82,9 +82,17 @@ describe('runNightlyReallocation', () => {
     const deferralRows = await pool.query('SELECT * FROM deferrals');
     expect(deferralRows.rowCount).toBe(2);
 
-    const messageRows = await pool.query('SELECT * FROM messages');
-    expect(messageRows.rowCount).toBe(2);
-    expect(messageRows.rows[0].body).toMatch(/deferred/i);
+    // Each deferral queues both an SMS and its spoken IVR counterpart.
+    const messageRows = await pool.query('SELECT * FROM messages ORDER BY channel');
+    expect(messageRows.rowCount).toBe(4);
+    const byChannel = messageRows.rows.reduce((acc, r) => {
+      (acc[r.channel] = acc[r.channel] || []).push(r);
+      return acc;
+    }, {});
+    expect(byChannel.sms).toHaveLength(2);
+    expect(byChannel.ivr).toHaveLength(2);
+    expect(byChannel.sms[0].body).toMatch(/deferred/i);
+    expect(byChannel.ivr[0].body).toMatch(/deferred/i);
   });
 
   test('distanceKm is computed from real land-record/centre coordinates, not hardcoded: the farther farmer is deferred first', async () => {

@@ -98,6 +98,15 @@ function deferralNotificationBody(centreCode, date) {
   return `Your booking for ${date} at ${centreCode} has been deferred due to reduced capacity. We will contact you with a new date.`;
 }
 
+// Same information as deferralNotificationBody, phrased for a voice call --
+// read out to a farmer who may not be able to read the SMS at all. Every
+// SMS notification gets a spoken counterpart (CLAUDE.md: the critical path
+// must work over SMS *and* IVR, never app/SMS-only), not just a shorter
+// version of the same text.
+function deferralVoiceScript(centreCode, date) {
+  return `Namaste. This is an automated call from Kisan Slot. Your procurement slot on ${date} at centre ${centreCode} has been deferred because capacity for that day was reduced. We will call you again once a new date is confirmed. Thank you.`;
+}
+
 /**
  * The nightly reallocation job's entire decision logic, as one pure
  * function: no I/O, no Date.now(), no randomness -- everything it needs
@@ -184,6 +193,7 @@ function planNightlyReallocation({ today, centres }) {
           farmerId: bumped.farmerId,
           relatedBookingId: bumped.bookingId,
           body: deferralNotificationBody(centre.code, futureDate.date),
+          voiceScript: deferralVoiceScript(centre.code, futureDate.date),
         });
       }
     }

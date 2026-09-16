@@ -392,10 +392,12 @@ function ReallocationPanel({ onApplied }) {
 
   return h('div', null,
     h('p', { style: { fontSize: '0.85rem', color: 'var(--ink-60)', marginTop: 0, marginBottom: 'var(--space-4)' } },
-      "Runs the same job a nightly cron trigger runs automatically -- releases this date's no-shows, recomputes capacity for the following 7 days, and defers the lowest-priority bookings wherever demand now exceeds it. Safe to re-run: an already-released no-show or already-deferred booking is left alone."
+      "Runs the same job a nightly cron trigger runs automatically. The date below is treated as today: it releases ",
+      h('em', null, 'that'),
+      " day's no-shows, then defers bookings for tomorrow onward (the following 7 days) wherever demand now exceeds capacity. Leave it on today's date unless you're deliberately replaying an earlier night -- a future date has nothing to release or defer yet. Safe to re-run: an already-released no-show or already-deferred booking is left alone."
     ),
     h('div', { className: 'date-row', style: { marginBottom: 0 } },
-      h('label', null, 'Run as of'),
+      h('label', null, 'Run as of (today)'),
       h('input', { type: 'date', value: date, max: today(), onChange: (e) => setDate(e.target.value) }),
       h('button', { className: 'btn btn-primary btn-sm', onClick: run, disabled: running },
         running && h('span', { className: 'spinner' }),
