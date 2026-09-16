@@ -12,9 +12,9 @@ const { centreOfficerAgent, districtOfficerAgent, operatorAgent, farmerAgent } =
 
 const DATE = '2026-09-16';
 
-function setup() {
+function setup({ now } = {}) {
   const pool = createTestPool();
-  const app = createApp(pool);
+  const app = createApp(pool, now ? { now: () => now } : {});
   return { pool, app };
 }
 

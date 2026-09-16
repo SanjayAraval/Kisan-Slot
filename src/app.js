@@ -14,19 +14,10 @@ const { createAuthRoutes } = require('./authRoutes');
 const { createAdminRoutes } = require('./adminRoutes');
 const { requireAuth } = require('./authMiddleware');
 const { validateQuantity, validateBookingDate } = require('../public/validation');
+const { todayInIST } = require('./todayInIST');
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-// Centres operate on India's calendar day, not the host machine's -- a
-// server left in its default UTC timezone (typical for a cloud VM) would
-// otherwise think "today" is still yesterday for the first 5.5 hours of
-// every IST day, letting past-dated bookings through. Deriving the date
-// from an IST-shifted instant sidesteps the host's TZ setting entirely.
-const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
-function todayInIST() {
-  return new Date(Date.now() + IST_OFFSET_MS).toISOString().slice(0, 10);
-}
 
 function isNonEmptyString(v) {
   return typeof v === 'string' && v.length > 0;
@@ -166,7 +157,7 @@ function createApp(pool, { now = todayInIST } = {}) {
     }
   });
 
-  app.use('/api/lots', createLotRoutes(pool));
+  app.use('/api/lots', createLotRoutes(pool, { now }));
   app.use('/api', createQueueRoutes(pool));
   app.use('/api', createDeclarationRoutes(pool));
   app.use('/api', createDashboardRoutes(pool));

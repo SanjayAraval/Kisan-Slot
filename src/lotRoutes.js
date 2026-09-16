@@ -5,6 +5,7 @@ const { checkinLot, recordQuality, recordWeighment, issueJForm, recordDispatch }
 const { scanLot, markServed, lookupByToken } = require('./queueService');
 const { requireAuth, requireRole, requireBookingCentreScope } = require('./authMiddleware');
 const queueEvents = require('./queueEvents');
+const { todayInIST } = require('./todayInIST');
 
 const STATUS_BY_RESULT_TYPE = {
   NOT_FOUND: 404,
@@ -49,7 +50,9 @@ function lotAction(pool, fn, successStatus, onCommitted) {
   };
 }
 
-function createLotRoutes(pool) {
+// `now` is injectable so tests aren't at the mercy of the wall clock --
+// mirrors the same override on createApp/runNightlyReallocation.
+function createLotRoutes(pool, { now = todayInIST } = {}) {
   const router = express.Router();
 
   // Resolves a scanned/typed token to the booking it belongs to -- the
@@ -104,7 +107,7 @@ function createLotRoutes(pool) {
     },
     lotAction(
       pool,
-      (client, bookingId, body) => scanLot(client, bookingId, body.token),
+      (client, bookingId, body) => scanLot(client, bookingId, body.token, now()),
       200,
       (result) => queueEvents.emit('changed', result.centreId)
     )

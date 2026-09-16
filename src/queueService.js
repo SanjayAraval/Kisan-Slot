@@ -19,18 +19,36 @@ function toDateString(value) {
 // just that action under the name and framing the live queue screen
 // uses, plus the centre/date the caller needs to know which queue this
 // lot just joined (for the WebSocket broadcast).
-async function scanLot(client, bookingId, token) {
-  const result = await checkinLot(client, bookingId, { token });
-  if (result.type !== 'OK') return result;
-
-  const centreResult = await client.query(
+//
+// Checked before any of that: the booking's service date against
+// `today`. The live queue only ever lists today's centre_day (see
+// loadQueue), so a pass scanned early or late would check the lot in
+// yet never appear anywhere -- "Checked in" at the gate, "Nobody in the
+// queue yet" on screen. Rejected here, before checkinLot runs, so a
+// mis-dated scan never mutates booking status at all.
+async function scanLot(client, bookingId, token, today) {
+  const dateResult = await client.query(
     `SELECT cd.centre_id, cd.service_date FROM bookings b
      JOIN centre_day cd ON cd.id = b.centre_day_id
      WHERE b.id = $1`,
     [bookingId]
   );
-  const row = centreResult.rows[0];
-  return { ...result, centreId: row.centre_id, serviceDate: toDateString(row.service_date) };
+  const dateRow = dateResult.rows[0];
+  if (!dateRow) return { type: 'NOT_FOUND', message: 'booking not found' };
+
+  const serviceDate = toDateString(dateRow.service_date);
+  if (serviceDate !== today) {
+    const message =
+      serviceDate > today
+        ? `This gate pass is valid for ${serviceDate}, not today.`
+        : `This gate pass was valid for ${serviceDate} and has expired.`;
+    return { type: 'BAD_REQUEST', message };
+  }
+
+  const result = await checkinLot(client, bookingId, { token });
+  if (result.type !== 'OK') return result;
+
+  return { ...result, centreId: dateRow.centre_id, serviceDate };
 }
 
 // Resolves a scanned/typed token to the booking it belongs to -- the
