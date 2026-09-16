@@ -152,7 +152,7 @@ function createAuthRoutes(pool) {
       const emp = result.rows[0];
       // Same "invalid credentials" message either way -- never reveal
       // whether the employee ID itself exists.
-      if (!emp || !verifyPassword(password, emp.password_hash)) {
+      if (!emp || !(await verifyPassword(password, emp.password_hash))) {
         recordFailedLoginAttempt(employeeId);
         return res.status(401).json({ status: 'UNAUTHORIZED', message: 'invalid employee ID or password' });
       }

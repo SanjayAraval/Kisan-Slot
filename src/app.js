@@ -3,6 +3,7 @@
 const path = require('path');
 const express = require('express');
 const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 const cookieParser = require('cookie-parser');
 const { attemptBooking, findAlternatives } = require('./bookingService');
 const { computeCentreDayCapacity, computeRemainingSlots } = require('./capacityService');
@@ -62,6 +63,16 @@ const CSP_SCRIPT_SOURCES = ["'self'", "'unsafe-inline'", 'https://unpkg.com', 'h
 // served with, same as the page that registered it).
 const CSP_CONNECT_SOURCES = ["'self'", 'https://api.open-meteo.com', 'https://unpkg.com', 'https://cdnjs.cloudflare.com', 'https://cdn.tailwindcss.com'];
 
+// Blanket protection against a client hammering any endpoint -- separate
+// from loginRateLimiter.js, which tracks failed /api/auth/login attempts
+// per employeeId rather than requests per IP.
+const globalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 // `now` is injectable so tests aren't at the mercy of the wall clock --
 // mirrors the `today` override on runNightlyReallocation.
 function createApp(pool, { now = todayInIST } = {}) {
@@ -78,6 +89,7 @@ function createApp(pool, { now = todayInIST } = {}) {
       },
     })
   );
+  app.use(globalLimiter);
   app.use(express.json());
   app.use(cookieParser());
   app.use(express.static(path.join(__dirname, '..', 'public')));

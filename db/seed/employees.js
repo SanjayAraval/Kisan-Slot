@@ -11,8 +11,9 @@ const DEMO_PASSWORD = 'demo1234';
 // One of each role, tied to the first seeded centre so `district_officer`
 // (Medak, matching every seeded centre's district) and `centre_officer`/
 // `operator` (that one centre) all have real, working scope.
-function buildEmployees(centres) {
+async function buildEmployees(centres) {
   const centre = centres[0];
+  const passwordHash = await hashPassword(DEMO_PASSWORD);
   return [
     {
       id: crypto.randomUUID(),
@@ -21,7 +22,7 @@ function buildEmployees(centres) {
       role: 'district_officer',
       centreId: null,
       district: 'Medak',
-      passwordHash: hashPassword(DEMO_PASSWORD),
+      passwordHash,
     },
     {
       id: crypto.randomUUID(),
@@ -30,7 +31,7 @@ function buildEmployees(centres) {
       role: 'centre_officer',
       centreId: centre.id,
       district: null,
-      passwordHash: hashPassword(DEMO_PASSWORD),
+      passwordHash,
     },
     {
       id: crypto.randomUUID(),
@@ -39,7 +40,7 @@ function buildEmployees(centres) {
       role: 'operator',
       centreId: centre.id,
       district: null,
-      passwordHash: hashPassword(DEMO_PASSWORD),
+      passwordHash,
     },
   ];
 }

@@ -969,7 +969,7 @@ async function main() {
   const { bookings, overDeclaredCount } = buildBookings(rng, centreDays, farmers);
   const overbookingSummary = applyOverbookingScenario(rng, centres, centreDailyInputs, centreDays);
   const noShowBookings = applyNoShowScenario(rng, bookings, centreDays, NO_SHOW_COUNT);
-  const employees = buildEmployees(centres);
+  const employees = await buildEmployees(centres);
 
   const allCentreDays = [...centreDays, ...historicalCentreDays];
   const allBookings = [...bookings, ...historicalBookings];

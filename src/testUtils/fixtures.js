@@ -9,13 +9,14 @@ function uuid() {
 
 async function insertEmployee(pool, overrides = {}) {
   const id = overrides.id || uuid();
+  const passwordHash = await hashPassword(overrides.password || 'test-password-123');
   await pool.query(
     `INSERT INTO employees (id, employee_id, password_hash, name, role, centre_id, district)
      VALUES ($1, $2, $3, $4, $5, $6, $7)`,
     [
       id,
       overrides.employeeId || `TEST-${id.slice(0, 8)}`,
-      hashPassword(overrides.password || 'test-password-123'),
+      passwordHash,
       overrides.name || 'Test Employee',
       overrides.role || 'centre_officer',
       overrides.centreId ?? null,
