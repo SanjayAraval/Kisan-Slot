@@ -48,6 +48,34 @@ const BURN_HISTORY_DAYS = 3;
 // comfortable multi-day cushion.
 const AT_RISK_CENTRE_CODES = new Set(['MDK-APMC-01', 'MDK-APMC-02']);
 
+// The nightly reallocation job only ever produces a deferral when
+// confirmed bookings for a future date outnumber what centre_daily_inputs
+// recomputes for that date (reallocationJob.buildSnapshot always
+// recomputes fresh from centre_daily_inputs -- see loadConfirmedBookings /
+// planNightlyReallocation -- rather than trusting the centre_day snapshot).
+// Left alone, buildBookings never overshoots: it packs farmers against
+// each centre_day's own bagsCapacity and stops. So these two centres get
+// their tomorrow (D+1) centre_daily_inputs quietly cut *after* bookings
+// were already packed against the original, higher number -- mimicking
+// an officer re-declaring reduced capacity (a labour no-show, a
+// half-day equipment outage) later the same day, before the nightly job
+// has caught up. Deliberately not APMC-01/02 -- those two are already
+// telling the separate gunny-cover story above; mixing the two would
+// muddy both.
+const OVERBOOKED_CENTRE_CODES = new Set(['MDK-PACS-02', 'MDK-IKP-01']);
+// Fraction of the already-booked bags that tomorrow's cut capacity should
+// land at -- comfortably below 1 so a real, multi-farmer deferral list
+// comes out (not just one farmer at the margin), comfortably above 0 so
+// most bookings are still kept and the score ranking has something to bite.
+const OVERBOOKED_TARGET_RATIO_RANGE = [0.45, 0.65];
+
+// A handful of today's (D) bookings get marked as no-shows so the nightly
+// job's noShowReleases (reallocationJob.loadNoShowBookings, keyed on
+// status = 'no_show' AND capacity_released_at IS NULL for the job's own
+// `today`) has something real to release, exactly like a live run would
+// see after gate staff mark absent farmers during the day.
+const NO_SHOW_COUNT = 6;
+
 const TOTAL_FARMERS = 5000;
 const UNMATCHED_RATIO = 0.15;
 const TENANT_RATIO = 0.05;
@@ -362,6 +390,109 @@ function buildBookings(rng, centreDays, farmers) {
   }
 
   return { bookings, overDeclaredCount };
+}
+
+// ---------------------------------------------------------------------------
+// Deliberate overbooking (so the nightly reallocation job has a real
+// deferral list to produce)
+// ---------------------------------------------------------------------------
+
+// Which lever each overbooked centre's cut turns -- the constraint it's
+// already tightest on per its `intendedBottleneck` (see centres.js), so
+// the cut reads as "the existing bottleneck got worse", not an
+// implausible across-the-board collapse.
+const OVERBOOKED_CENTRE_LEVERS = {
+  // hamaliBagsPerGangPerDay (each gang's throughput, e.g. rain-slowed
+  // bagging), not hamaliGangCount -- a whole gang is too coarse a step to
+  // land anywhere near OVERBOOKED_TARGET_RATIO_RANGE without overshooting.
+  'MDK-PACS-02': (dailyInput) => {
+    dailyInput.hamaliBagsPerGangPerDay = Math.max(50, Math.round(dailyInput.hamaliBagsPerGangPerDay * 0.9));
+  },
+  'MDK-IKP-01': (dailyInput) => {
+    dailyInput.weighbridgeOperatingMinutes = Math.max(30, Math.round(dailyInput.weighbridgeOperatingMinutes * 0.9));
+  },
+};
+
+function engineInputFrom(dailyInput) {
+  return {
+    weighingMode: dailyInput.weighingMode,
+    weighbridgeOperatingMinutes: dailyInput.weighbridgeOperatingMinutes,
+    weighbridgeAvgCycleMinutes: dailyInput.weighbridgeAvgCycleMinutes ?? undefined,
+    secondsPerBag: dailyInput.secondsPerBag ?? undefined,
+    avgBagsPerLot: dailyInput.avgBagsPerLot ?? undefined,
+    hamaliGangCount: dailyInput.hamaliGangCount,
+    hamaliBagsPerGangPerDay: dailyInput.hamaliBagsPerGangPerDay,
+    bagsPerTruck: dailyInput.bagsPerTruck,
+    gunnyBagsAvailable: dailyInput.gunnyBagsAvailable,
+    truckEvacuationCapacity: dailyInput.truckEvacuationCapacity,
+    yardCapacityTonnes: dailyInput.yardCapacityTonnes - dailyInput.undispatchedTonnes,
+    avgTruckLoadTonnes: dailyInput.avgTruckLoadTonnes,
+    moistureMeterCount: dailyInput.moistureMeterCount,
+    moistureTestsPerMeterPerDay: dailyInput.moistureTestsPerMeterPerDay,
+  };
+}
+
+// Mutates centreDailyInputs in place only -- centreDays (and its already-
+// written bagsBooked/bagsCapacity, which the seed's own centre_day INSERT
+// must keep bags_booked <= bags_capacity for) is left exactly as
+// buildBookings packed it. The resulting gap between the two is what
+// reallocationJob.buildSnapshot picks up: it always recomputes bagsCapacity
+// fresh from centre_daily_inputs rather than trusting the centre_day
+// snapshot, so tomorrow's real (cut) capacity vs. the bookings already on
+// file is exactly the "capacity_reduced" scenario planNightlyReallocation
+// exists to resolve.
+function applyOverbookingScenario(rng, centres, centreDailyInputs, centreDays) {
+  const tomorrow = addDays(START_DATE, 1);
+  const summary = [];
+
+  for (const centre of centres) {
+    const lever = OVERBOOKED_CENTRE_LEVERS[centre.code];
+    if (!lever) continue;
+
+    const dailyInput = centreDailyInputs.find((d) => d.centreId === centre.id && d.serviceDate === tomorrow);
+    const centreDay = centreDays.find((d) => d.centreId === centre.id && d.serviceDate === tomorrow);
+    const bagsBookedBefore = centreDay.bagsBooked;
+    const originalBagsCapacity = centreDay.bagsCapacity;
+    const targetBagsCapacity = bagsBookedBefore * rng.float(...OVERBOOKED_TARGET_RATIO_RANGE);
+
+    let cutBagsCapacity = originalBagsCapacity;
+    let guard = 0;
+    while (cutBagsCapacity > targetBagsCapacity && guard < 500) {
+      lever(dailyInput);
+      const engineResult = computeDailyCapacity(engineInputFrom(dailyInput));
+      cutBagsCapacity = engineResult.bookableCapacity * dailyInput.bagsPerTruck;
+      guard += 1;
+    }
+
+    summary.push({
+      centreName: centre.name,
+      centreCode: centre.code,
+      date: tomorrow,
+      bagsBooked: bagsBookedBefore,
+      originalBagsCapacity,
+      cutBagsCapacity,
+    });
+  }
+
+  return summary;
+}
+
+// ---------------------------------------------------------------------------
+// No-shows (so the nightly job's no-show release is non-zero)
+// ---------------------------------------------------------------------------
+
+// Picks a few of today's (D) plain 'booked' bookings and marks them
+// 'no_show' -- capacity_released_at stays NULL (it isn't one of the
+// insert columns), matching a live gate-side no-show mark that the
+// nightly job hasn't released yet.
+function applyNoShowScenario(rng, bookings, centreDays, count) {
+  const todayCentreDayIds = new Set(centreDays.filter((d) => d.serviceDate === START_DATE).map((d) => d.id));
+  const eligible = rng.shuffle(bookings.filter((b) => todayCentreDayIds.has(b.centreDayId)));
+  const chosen = eligible.slice(0, count);
+  for (const booking of chosen) {
+    booking.status = 'no_show';
+  }
+  return chosen;
 }
 
 // ---------------------------------------------------------------------------
@@ -734,7 +865,18 @@ async function writeToDatabase({ centres, centreDailyInputs, centreDays, landRec
 // Summary
 // ---------------------------------------------------------------------------
 
-function printSummary({ centres, centreDays, landRecords, farmers, bookings, overDeclaredCount, burnSummary, employees }) {
+function printSummary({
+  centres,
+  centreDays,
+  landRecords,
+  farmers,
+  bookings,
+  overDeclaredCount,
+  burnSummary,
+  employees,
+  overbookingSummary,
+  noShowBookings,
+}) {
   const line = (s = '') => console.log(s);
 
   line('='.repeat(72));
@@ -790,6 +932,15 @@ function printSummary({ centres, centreDays, landRecords, farmers, bookings, ove
     line(`    ${b.centreName.padEnd(24)} avg burn: ${String(b.avgDailyBurn).padStart(6)} bags/day   gunny (${addDays(START_DATE, 1)}): ${String(b.gunnyTomorrow).padStart(6)}   days of cover: ${b.daysOfCover}${flag}`);
   }
 
+  line(`\nDeliberately overbooked for tomorrow (${addDays(START_DATE, 1)}), for the nightly reallocation job to defer:`);
+  for (const o of overbookingSummary) {
+    line(
+      `    ${o.centreName.padEnd(24)} booked: ${String(o.bagsBooked).padStart(8)} bags   declared capacity cut ${String(o.originalBagsCapacity).padStart(8)} -> ${String(round(o.cutBagsCapacity, 2)).padStart(8)} bags`
+    );
+  }
+
+  line(`\nNo-shows seeded for today (${START_DATE}), for the nightly job to release: ${noShowBookings.length}`);
+
   line('\nDemo employee logins (password: demo1234):');
   for (const e of employees) {
     line(`    ${e.employeeId.padEnd(8)} ${e.role.padEnd(17)} ${e.name}`);
@@ -816,6 +967,8 @@ async function main() {
     farmers
   );
   const { bookings, overDeclaredCount } = buildBookings(rng, centreDays, farmers);
+  const overbookingSummary = applyOverbookingScenario(rng, centres, centreDailyInputs, centreDays);
+  const noShowBookings = applyNoShowScenario(rng, bookings, centreDays, NO_SHOW_COUNT);
   const employees = buildEmployees(centres);
 
   const allCentreDays = [...centreDays, ...historicalCentreDays];
@@ -836,7 +989,18 @@ async function main() {
     });
   }
 
-  printSummary({ centres, centreDays, landRecords, farmers, bookings, overDeclaredCount, burnSummary, employees });
+  printSummary({
+    centres,
+    centreDays,
+    landRecords,
+    farmers,
+    bookings,
+    overDeclaredCount,
+    burnSummary,
+    employees,
+    overbookingSummary,
+    noShowBookings,
+  });
 }
 
 main().catch((err) => {
