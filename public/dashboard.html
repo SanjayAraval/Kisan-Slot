@@ -3,6 +3,8 @@
 <head>
 <meta charset="utf-8" />
 <title>District Officer Dashboard</title>
+<link rel="manifest" href="/manifest.json" />
+<meta name="theme-color" content="#16241C" />
 <link rel="stylesheet" href="/theme.css" />
 <style>
   body { max-width: 1100px; margin: 0 auto; padding: var(--space-5) var(--space-4) var(--space-8); }
@@ -46,6 +48,9 @@
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
 <script>
 'use strict';
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => { navigator.serviceWorker.register('/sw.js').catch(() => {}); });
+}
 const h = React.createElement;
 
 const CENTRE_TYPE_LABELS = { apmc_mandi: 'APMC Mandi', pacs: 'PACS', ikp: 'IKP' };

@@ -4,6 +4,8 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
 <title>Live Queue</title>
+<link rel="manifest" href="/manifest.json" />
+<meta name="theme-color" content="#16241C" />
 <link rel="stylesheet" href="/theme.css" />
 <style>
   body { max-width: 760px; margin: 0 auto; padding: var(--space-5) var(--space-4) var(--space-8); }
@@ -32,8 +34,12 @@
 <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
 <script src="https://unpkg.com/html5-qrcode@2/html5-qrcode.min.js"></script>
+<script src="/offline-queue.js"></script>
 <script>
 'use strict';
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => { navigator.serviceWorker.register('/sw.js').catch(() => {}); });
+}
 const h = React.createElement;
 
 function formatLocalDate(d) {
@@ -128,15 +134,26 @@ function ScanPanel({ onScanned }) {
   async function submitScan(bookingId, token) {
     setSubmitting(true);
     try {
-      const { status, body } = await fetchJson(`/api/lots/${bookingId}/scan`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token }),
-      });
-      if (status === 200) {
+      // Offline (or unreachable) -- queued instead of lost, replayed
+      // once this device reconnects (see offline-queue.js and
+      // idempotency.js). This is exactly the scenario a gate officer at
+      // a spotty-signal centre needs: keep scanning farmers in all day,
+      // let the batch sync once signal comes back, never silently drop
+      // a check-in.
+      const outcome = await KisanOutbox.fetchOrQueue(
+        `/api/lots/${bookingId}/scan`,
+        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token }) },
+        `Gate check-in — ${token}`
+      );
+      if (outcome.queued) {
+        setResult({ ok: true, queued: true, message: `Saved -- token ${token} will be checked in once you're back online.` });
+        return;
+      }
+      if (outcome.httpStatus === 200) {
         setResult({ ok: true, message: `Checked in -- token ${token}.` });
         onScanned();
       } else {
+        const body = outcome.body || {};
         setResult({ ok: false, message: body.message || (body.errors || []).join(', ') || 'Could not check in this lot.' });
       }
     } catch (err) {
@@ -214,7 +231,10 @@ function ScanPanel({ onScanned }) {
 
   return h('fieldset', null,
     h('legend', null, 'Scan a gate pass'),
-    result && h('div', { className: `callout ${result.ok ? 'callout-success' : 'callout-danger'}`, style: { marginBottom: 'var(--space-4)' } }, result.message),
+    result && h('div', {
+      className: `callout ${result.queued ? 'callout-warning' : result.ok ? 'callout-success' : 'callout-danger'}`,
+      style: { marginBottom: 'var(--space-4)' },
+    }, result.message),
 
     h('div', { className: 'scan-actions' },
       !scanning
@@ -278,6 +298,48 @@ function WaitingTable({ rows, onServe }) {
   );
 }
 
+// Same shared-outbox tracking as farmer.html's useOutboxStatus/
+// OutboxBanner -- duplicated rather than imported, matching every other
+// per-page helper in this codebase (no shared JS module system beyond
+// validation.js/offline-queue.js). Keeps a "N saved, will sync" banner
+// on screen for as long as anything from this device (a scan, a served
+// call) is still queued.
+function useOutboxStatus() {
+  const [count, setCount] = React.useState(0);
+  const [online, setOnline] = React.useState(() => (typeof navigator === 'undefined' ? true : navigator.onLine));
+
+  React.useEffect(() => {
+    if (!window.KisanOutbox) return undefined;
+    let cancelled = false;
+    const refresh = () => {
+      KisanOutbox.count().then((n) => { if (!cancelled) setCount(n); }).catch(() => {});
+    };
+    refresh();
+    const unsubscribe = KisanOutbox.onChange(refresh);
+    const onOnline = () => { setOnline(true); refresh(); };
+    const onOffline = () => setOnline(false);
+    window.addEventListener('online', onOnline);
+    window.addEventListener('offline', onOffline);
+    return () => {
+      cancelled = true;
+      unsubscribe();
+      window.removeEventListener('online', onOnline);
+      window.removeEventListener('offline', onOffline);
+    };
+  }, []);
+
+  return { count, online };
+}
+
+function OutboxBanner() {
+  const { count, online } = useOutboxStatus();
+  if (count === 0 && online) return null;
+  return h('div', { className: `callout ${online ? 'callout-warning' : 'callout-danger'}`, style: { marginBottom: 'var(--space-4)' } },
+    !online && "You're offline. ",
+    count > 0 ? `${count} action(s) ${online ? 'syncing…' : 'will sync once you reconnect.'}` : ''
+  );
+}
+
 function App() {
   const [session, setSession] = React.useState({ loading: true, role: null, centreId: null, name: null });
   const [centreLabel, setCentreLabel] = React.useState(null);
@@ -308,11 +370,16 @@ function App() {
   const { queue, mode } = useLiveQueue(session.centreId, date);
 
   async function markServed(bookingId) {
-    const { status, body } = await fetchJson(`/api/lots/${bookingId}/serve`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-    });
-    if (status !== 200) {
-      window.alert(body.message || 'Could not mark this lot served.'); // eslint-disable-line no-alert -- rare failure path, not worth a dedicated banner
+    // Same offline-safe pattern as submitScan above -- queued rather than
+    // lost if this device is offline right when the officer taps it.
+    const outcome = await KisanOutbox.fetchOrQueue(
+      `/api/lots/${bookingId}/serve`,
+      { method: 'POST', headers: { 'Content-Type': 'application/json' } },
+      'Mark served'
+    );
+    if (outcome.queued) return; // reflected by the pending-sync badge instead of an alert -- see OutboxBadge
+    if (outcome.httpStatus !== 200) {
+      window.alert((outcome.body && outcome.body.message) || 'Could not mark this lot served.'); // eslint-disable-line no-alert -- rare failure path, not worth a dedicated banner
     }
     // No manual refresh needed -- the WS push (or next 3s poll) reflects it.
   }
@@ -336,6 +403,8 @@ function App() {
       `Logged in as ${session.name} (${session.role.replace('_', ' ')})`, ' · ',
       h('button', { className: 'link-btn', onClick: logout }, 'Log out')
     ),
+
+    h(OutboxBanner),
 
     h(ScanPanel, { onScanned: () => {} }),
 

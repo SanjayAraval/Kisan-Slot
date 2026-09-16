@@ -38,6 +38,33 @@ describe('POST /api/lots/:id/scan', () => {
     expect(row.rows[0].checked_in_at).not.toBeNull();
   });
 
+  test('replaying the same Idempotency-Key returns the original check-in, not the usual 409 for an already-scanned lot', async () => {
+    const { app, pool } = setup();
+    const centreId = await insertCentre(pool);
+    const centreDayId = await insertCentreDay(pool, { centreId, serviceDate: DATE });
+    const farmerId = await insertFarmerWithLand(pool, {});
+    const bookingId = await insertBooking(pool, { centreDayId, farmerId, token: 'MDK-01-20260916-001', status: 'booked' });
+
+    const officer = centreOfficerAgent(app, centreId);
+    const first = await officer
+      .post(`/api/lots/${bookingId}/scan`)
+      .set('Idempotency-Key', 'scan-key-1')
+      .send({ token: 'MDK-01-20260916-001' });
+    expect(first.status).toBe(200);
+
+    // Simulates the gate queue's offline outbox (public/offline-queue.js,
+    // queue.html) replaying a queued scan after reconnecting, having
+    // never seen the first response -- without idempotency this would
+    // 409 on the now-checked-in lot instead of returning the same result.
+    const replay = await officer
+      .post(`/api/lots/${bookingId}/scan`)
+      .set('Idempotency-Key', 'scan-key-1')
+      .send({ token: 'MDK-01-20260916-001' });
+    expect(replay.status).toBe(200);
+    expect(replay.body).toEqual(first.body);
+    expect(replay.headers['idempotency-replayed']).toBe('true');
+  });
+
   test('400s a mismatched token, without checking the lot in', async () => {
     const { app, pool } = setup();
     const centreId = await insertCentre(pool);

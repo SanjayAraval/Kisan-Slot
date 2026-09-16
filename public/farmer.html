@@ -4,6 +4,8 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
 <title>Kisan Slot — Farmer</title>
+<link rel="manifest" href="/manifest.json" />
+<meta name="theme-color" content="#16241C" />
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
 <!-- Linked before the Tailwind CDN script so Tailwind's generated rules
      (equal-or-higher specificity, later in the cascade) win any
@@ -59,8 +61,12 @@
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="/validation.js"></script>
+<script src="/offline-queue.js"></script>
 <script>
 'use strict';
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => { navigator.serviceWorker.register('/sw.js').catch(() => {}); });
+}
 const h = React.createElement;
 const { useState, useEffect, useMemo, useCallback, useRef, useContext, createContext } = React;
 
@@ -109,6 +115,9 @@ const TRANSLATIONS = {
     bookingEllipsis: 'Booking…',
     enterAllFields: 'Enter a quantity, centre, and date.',
     bookedBadge: 'Booked',
+    queuedBadge: 'Saved -- will sync',
+    queuedBookingTitle: "You're offline -- this booking is saved on your phone.",
+    queuedBookingBody: "It will be sent as soon as you're back online. Check the Status tab after that to see your token and gate pass.",
     alreadyBookedMessage: 'You already have a booking for this date.',
     rowQuantity: 'Quantity',
     rowDate: 'Date',
@@ -179,6 +188,9 @@ const TRANSLATIONS = {
     noDeductions: 'No deductions.',
     totalDeductions: 'Total deductions',
     netPayableLabel: 'Net payable · {rate}/q effective (MSP {msp}/q)',
+    offlineNote: "You're offline.",
+    syncingNote: 'Syncing {n} saved item(s)…',
+    pendingSyncNote: '{n} saved item(s) will sync once you reconnect.',
     couldNotLoadFarmer: 'Could not load farmer.',
     loadingYourDetails: 'Loading your details…',
     couldNotLoadStatus: 'Could not load status.',
@@ -221,6 +233,9 @@ const TRANSLATIONS = {
     bookingEllipsis: 'बुक हो रहा है…',
     enterAllFields: 'मात्रा, केंद्र और तारीख दर्ज करें।',
     bookedBadge: 'बुक हो गया',
+    queuedBadge: 'सेव हो गया -- सिंक होगा',
+    queuedBookingTitle: 'आप ऑफ़लाइन हैं -- यह बुकिंग आपके फ़ोन में सेव हो गई है।',
+    queuedBookingBody: 'नेटवर्क वापस आते ही यह भेज दी जाएगी। अपना टोकन और गेट पास देखने के लिए बाद में स्थिति टैब जाँचें।',
     alreadyBookedMessage: 'आपके पास इस तारीख के लिए पहले से ही एक बुकिंग है।',
     rowQuantity: 'मात्रा',
     rowDate: 'तारीख',
@@ -291,6 +306,9 @@ const TRANSLATIONS = {
     noDeductions: 'कोई कटौती नहीं।',
     totalDeductions: 'कुल कटौती',
     netPayableLabel: 'निवल देय · {rate}/क्विंटल प्रभावी (एमएसपी {msp}/क्विंटल)',
+    offlineNote: 'आप ऑफ़लाइन हैं।',
+    syncingNote: '{n} सेव आइटम सिंक हो रहे हैं…',
+    pendingSyncNote: 'नेटवर्क वापस आते ही {n} सेव आइटम सिंक हो जाएँगे।',
     couldNotLoadFarmer: 'किसान लोड नहीं हो सका।',
     loadingYourDetails: 'आपकी जानकारी लोड हो रही है…',
     couldNotLoadStatus: 'स्थिति लोड नहीं हो सकी।',
@@ -333,6 +351,9 @@ const TRANSLATIONS = {
     bookingEllipsis: 'బుక్ అవుతోంది…',
     enterAllFields: 'పరిమాణం, కేంద్రం మరియు తేదీని నమోదు చేయండి.',
     bookedBadge: 'బుక్ అయింది',
+    queuedBadge: 'సేవ్ అయింది -- సింక్ అవుతుంది',
+    queuedBookingTitle: 'మీరు ఆఫ్‌లైన్‌లో ఉన్నారు -- ఈ బుకింగ్ మీ ఫోన్‌లో సేవ్ చేయబడింది.',
+    queuedBookingBody: 'నెట్‌వర్క్ తిరిగి వచ్చిన వెంటనే ఇది పంపబడుతుంది. మీ టోకెన్ మరియు గేట్ పాస్ చూడటానికి తర్వాత స్థితి ట్యాబ్‌ను తనిఖీ చేయండి.',
     alreadyBookedMessage: 'ఈ తేదీకి మీకు ఇప్పటికే ఒక బుకింగ్ ఉంది.',
     rowQuantity: 'పరిమాణం',
     rowDate: 'తేదీ',
@@ -403,6 +424,9 @@ const TRANSLATIONS = {
     noDeductions: 'కోతలు లేవు.',
     totalDeductions: 'మొత్తం కోతలు',
     netPayableLabel: 'నికర చెల్లింపు · {rate}/క్వింటాల్ ప్రభావవంతమైనది (ఎంఎస్‌పి {msp}/క్వింటాల్)',
+    offlineNote: 'మీరు ఆఫ్‌లైన్‌లో ఉన్నారు.',
+    syncingNote: '{n} సేవ్ చేసిన అంశాలు సింక్ అవుతున్నాయి…',
+    pendingSyncNote: 'నెట్‌వర్క్ తిరిగి వచ్చిన వెంటనే {n} సేవ్ చేసిన అంశాలు సింక్ అవుతాయి.',
     couldNotLoadFarmer: 'రైతును లోడ్ చేయలేకపోయాము.',
     loadingYourDetails: 'మీ వివరాలు లోడ్ అవుతున్నాయి…',
     couldNotLoadStatus: 'స్థితిని లోడ్ చేయలేకపోయాము.',
@@ -957,11 +981,24 @@ function BookScreen({ farmer, onSwitchTab }) {
     setNetworkError(null);
     setServerErrors(null);
     try {
-      const res = await fetchJson('/api/bookings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
+      // Offline (or the request can't reach the server at all) -- queued
+      // instead of lost, replayed once this device reconnects (see
+      // offline-queue.js and idempotency.js). Never shown as "Booked":
+      // capacity is a live, contended resource (see CLAUDE.md -- "a slot
+      // is a promise about capacity"), so there's no real token/QR to
+      // show yet, only once the queued request actually lands.
+      const outcome = await KisanOutbox.fetchOrQueue(
+        '/api/bookings',
+        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) },
+        t('bookSlotBtn')
+      );
+      if (outcome.queued) {
+        setResult({ httpStatus: null, body: { status: 'QUEUED' } });
+        if (overrides.centreId) setCentreId(overrides.centreId);
+        if (overrides.date) setDate(overrides.date);
+        return;
+      }
+      const res = { httpStatus: outcome.httpStatus, body: outcome.body };
       // A validation failure the server caught (the client-side check
       // above should already prevent most of these) stays on the form,
       // rendered field-by-field -- every other outcome (booked, already
@@ -989,6 +1026,29 @@ function BookScreen({ farmer, onSwitchTab }) {
 
   const status = result && result.body && result.body.status;
   const serverErrorsByField = useMemo(() => classifyBookingErrors(serverErrors), [serverErrors]);
+
+  if (status === 'QUEUED') {
+    return h('div', null,
+      h(Callout, { tone: 'warning', icon: 'fa-cloud-arrow-up' },
+        h('div', { className: 'flex justify-center mb-3' }, h(Badge, { tone: 'warning' },
+          h('i', { className: 'fa-solid fa-clock' }), t('queuedBadge')
+        )),
+        h('p', { className: 'font-bold text-center mb-1' }, t('queuedBookingTitle')),
+        h('p', { className: 'text-sm text-center m-0' }, t('queuedBookingBody')),
+        h('div', { className: 'mt-3' },
+          h(Card, null,
+            h(Row, { k: t('rowQuantity'), v: `${quintals} ${t('unitQuintal')}` }),
+            h(Row, { k: t('rowDate'), v: formatDate(date) }),
+            selectedCentre && h(Row, { k: t('fieldCentre'), v: centreDisplayName(selectedCentre, lang) })
+          )
+        )
+      ),
+      h('div', { className: 'flex gap-2.5 mt-4' },
+        h(PrimaryButton, { onClick: () => onSwitchTab('status'), icon: 'fa-route' }, t('seeStatusBtn')),
+        h(SecondaryButton, { onClick: reset }, t('bookAnotherBtn'))
+      )
+    );
+  }
 
   if (status === 'BOOKED') {
     const b = result.body.booking;
@@ -1353,6 +1413,8 @@ function JFormCard({ j }) {
 // session -- this page no longer lets anyone browse another farmer's
 // data by picking a name from a list; the server enforces that too, but
 // the UI shouldn't dangle an option that only ever 403s.
+const SESSION_CACHE_KEY = 'kisan-farmer-session';
+
 function useFarmerSession() {
   const [state, setState] = useState({ loading: true, farmerId: null });
 
@@ -1362,12 +1424,31 @@ function useFarmerSession() {
       .then(({ httpStatus, body }) => {
         if (cancelled) return;
         if (httpStatus !== 200 || body.role !== 'farmer') {
+          try { localStorage.removeItem(SESSION_CACHE_KEY); } catch (err) { /* private-mode storage, etc. -- nothing cached to clear anyway */ }
           window.location.href = '/login.html';
           return;
         }
+        try { localStorage.setItem(SESSION_CACHE_KEY, JSON.stringify({ farmerId: body.farmerId })); } catch (err) { /* non-fatal -- just no offline fallback next time */ }
         setState({ loading: false, farmerId: body.farmerId });
       })
-      .catch(() => { if (!cancelled) window.location.href = '/login.html'; });
+      .catch(() => {
+        if (cancelled) return;
+        // The auth check itself needs a network round trip, but a real
+        // 401 does too -- a fetch() failure here only ever means "this
+        // device can't reach the server right now", never "not logged
+        // in". Falling back to the last farmerId this device
+        // successfully authenticated as (rather than bouncing to
+        // login.html, which is no more usable offline) is what actually
+        // lets a returning farmer keep using the cached app shell -- see
+        // CLAUDE.md's offline-first non-negotiable.
+        let cached = null;
+        try { cached = JSON.parse(localStorage.getItem(SESSION_CACHE_KEY) || 'null'); } catch (err) { /* corrupt/missing -- treated as no cache below */ }
+        if (cached && cached.farmerId) {
+          setState({ loading: false, farmerId: cached.farmerId });
+        } else {
+          window.location.href = '/login.html';
+        }
+      });
     return () => { cancelled = true; };
   }, []);
 
@@ -1379,6 +1460,55 @@ async function logout() {
   window.location.href = '/login.html';
 }
 
+// Tracks the shared offline outbox (see offline-queue.js) and live
+// connectivity -- used to keep a persistent "N saved, will sync" banner
+// on screen for as long as anything is actually queued, independent of
+// whichever screen queued it (a booking made on the Book tab still shows
+// as pending after switching to Status). Never silently drops a queued
+// write out of view the way a one-off toast tied to a single submit
+// would.
+function useOutboxStatus() {
+  const [count, setCount] = useState(0);
+  const [online, setOnline] = useState(() => (typeof navigator === 'undefined' ? true : navigator.onLine));
+
+  useEffect(() => {
+    if (!window.KisanOutbox) return undefined;
+    let cancelled = false;
+    const refresh = () => {
+      KisanOutbox.count().then((n) => { if (!cancelled) setCount(n); }).catch(() => {});
+    };
+    refresh();
+    const unsubscribe = KisanOutbox.onChange(refresh);
+    const onOnline = () => { setOnline(true); refresh(); };
+    const onOffline = () => setOnline(false);
+    window.addEventListener('online', onOnline);
+    window.addEventListener('offline', onOffline);
+    return () => {
+      cancelled = true;
+      unsubscribe();
+      window.removeEventListener('online', onOnline);
+      window.removeEventListener('offline', onOffline);
+    };
+  }, []);
+
+  return { count, online };
+}
+
+function OutboxBanner() {
+  const t = useT();
+  const { count, online } = useOutboxStatus();
+  if (count === 0 && online) return null;
+
+  return h('div', { className: 'mb-4' },
+    h(Callout, { tone: online ? 'warning' : 'danger', icon: online ? 'fa-cloud-arrow-up' : 'fa-wifi' },
+      h('p', { className: 'm-0 text-sm font-bold' },
+        !online && t('offlineNote'),
+        count > 0 ? ` ${online ? t('syncingNote', { n: count }) : t('pendingSyncNote', { n: count })}` : ''
+      )
+    )
+  );
+}
+
 function AppBody() {
   const t = useT();
   const session = useFarmerSession();
@@ -1387,15 +1517,32 @@ function AppBody() {
   const [tab, setTab] = useState('book');
   const [error, setError] = useState(null);
 
+  const farmerCacheKey = session.farmerId ? `kisan-farmer-profile-${session.farmerId}` : null;
+
   useEffect(() => {
     if (!session.farmerId) return;
     setFarmerLoading(true);
     fetchJson(`/api/farmers/${session.farmerId}`)
       .then(({ httpStatus, body }) => {
-        if (httpStatus === 200) setFarmer(body);
-        else setError(body.message || t('couldNotLoadFarmer'));
+        if (httpStatus === 200) {
+          setFarmer(body);
+          try { localStorage.setItem(farmerCacheKey, JSON.stringify(body)); } catch (err) { /* non-fatal -- just no offline fallback next time */ }
+        } else {
+          setError(body.message || t('couldNotLoadFarmer'));
+        }
       })
-      .catch((err) => setError(err.message))
+      .catch((err) => {
+        // Same reasoning as useFarmerSession's catch above: a network
+        // failure here means "can't refresh right now", not "this
+        // farmer doesn't exist" -- the Book/Status/J-Form tabs need
+        // *something* in `farmer` to render at all, so fall back to
+        // whatever profile was last fetched successfully rather than
+        // leaving the whole screen stuck on an error banner.
+        let cached = null;
+        try { cached = JSON.parse(localStorage.getItem(farmerCacheKey) || 'null'); } catch (e) { /* corrupt/missing */ }
+        if (cached) setFarmer(cached);
+        else setError(err.message);
+      })
       .finally(() => setFarmerLoading(false));
   }, [session.farmerId]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1426,6 +1573,8 @@ function AppBody() {
         h('i', { className: 'fa-solid fa-right-from-bracket' }), t('logoutBtn')
       )
     ),
+
+    h(OutboxBanner),
 
     error && h('div', { className: 'mb-4' }, h(Callout, { tone: 'danger', icon: 'fa-circle-exclamation' }, error)),
 

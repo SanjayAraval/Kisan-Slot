@@ -4,6 +4,7 @@ const express = require('express');
 const { listFarmers, loadFarmerDetail, loadLotStatus, loadJForm, lookupLandRecordByNumber, registerFarmer } = require('./farmerService');
 const { getUser, requireAuth, requireRole, requireFarmerSelfOrOfficer } = require('./authMiddleware');
 const { readRegistrationToken } = require('./authService');
+const { idempotentReplay, recordIdempotentResponse } = require('./idempotency');
 const {
   normalizeMobile,
   validateMobile,
@@ -97,6 +98,16 @@ function createFarmerRoutes(pool) {
     if (verifiedMobile !== mobile) {
       return res.status(400).json({ status: 'BAD_REQUEST', message: 'mobile number was not OTP-verified -- request and verify a code first' });
     }
+
+    // Placed after the OTP-verification check above, so replaying a
+    // stale key still requires the same proof-of-phone the original
+    // request needed -- see idempotency.js. Registration is the first
+    // offline-queueable action a new farmer can hit (see
+    // public/offline-queue.js): the OTP round trip needs a connection,
+    // but the final submit -- often a long form -- can easily land after
+    // signal drops.
+    if (await idempotentReplay(pool, req, res)) return;
+    recordIdempotentResponse(pool, req, res);
 
     const user = getUser(req);
     const operator = user && user.role === 'operator' ? { id: user.employeeDbId, name: user.name } : null;

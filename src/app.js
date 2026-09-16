@@ -2,6 +2,7 @@
 
 const path = require('path');
 const express = require('express');
+const helmet = require('helmet');
 const cookieParser = require('cookie-parser');
 const { attemptBooking, findAlternatives } = require('./bookingService');
 const { computeCentreDayCapacity, computeRemainingSlots } = require('./capacityService');
@@ -15,6 +16,7 @@ const { createAdminRoutes } = require('./adminRoutes');
 const { requireAuth } = require('./authMiddleware');
 const { validateQuantity, validateBookingDate } = require('../public/validation');
 const { todayInIST } = require('./todayInIST');
+const { idempotentReplay, recordIdempotentResponse } = require('./idempotency');
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -44,10 +46,38 @@ function validateBookingBody(body, today) {
   return errors;
 }
 
+// The default CSP (script-src/connect-src 'self' only) would block every
+// page in public/ -- they all load React, QR libraries and Tailwind's
+// Play CDN from unpkg/cdnjs/cdn.tailwindcss.com as inline <script> blocks
+// (no bundler -- see CLAUDE.md's stack note), and farmer.html's rain
+// advisory calls Open-Meteo directly from the browser. Everything else
+// (frame-ancestors, object-src, the COOP/CORP/HSTS headers, etc.) stays
+// at helmet's default, already-strict setting.
+const CSP_SCRIPT_SOURCES = ["'self'", "'unsafe-inline'", 'https://unpkg.com', 'https://cdnjs.cloudflare.com', 'https://cdn.tailwindcss.com'];
+// Same CDN hosts as script-src, plus Open-Meteo -- connect-src (not
+// script-src) is what governs fetch()/XHR, which covers both
+// farmer.html's rain-advisory call *and* sw.js's own runtime-caching
+// fetches for those CDN assets (see public/sw.js's RUNTIME_CACHE_HOSTS --
+// a service worker's fetches are governed by the CSP its own script was
+// served with, same as the page that registered it).
+const CSP_CONNECT_SOURCES = ["'self'", 'https://api.open-meteo.com', 'https://unpkg.com', 'https://cdnjs.cloudflare.com', 'https://cdn.tailwindcss.com'];
+
 // `now` is injectable so tests aren't at the mercy of the wall clock --
 // mirrors the `today` override on runNightlyReallocation.
 function createApp(pool, { now = todayInIST } = {}) {
   const app = express();
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        directives: {
+          ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+          'script-src': CSP_SCRIPT_SOURCES,
+          'connect-src': CSP_CONNECT_SOURCES,
+          'worker-src': ["'self'"],
+        },
+      },
+    })
+  );
   app.use(express.json());
   app.use(cookieParser());
   app.use(express.static(path.join(__dirname, '..', 'public')));
@@ -65,6 +95,12 @@ function createApp(pool, { now = todayInIST } = {}) {
     }
     next();
   }, async (req, res, next) => {
+    // Placed after the role/self checks above, so replaying a stale key
+    // still requires the same authorization the original request needed
+    // -- see idempotency.js.
+    if (await idempotentReplay(pool, req, res)) return;
+    recordIdempotentResponse(pool, req, res);
+
     const errors = validateBookingBody(req.body || {}, now());
     if (errors.length > 0) {
       return res.status(400).json({ status: 'BAD_REQUEST', errors });

@@ -4,6 +4,8 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Queue Board</title>
+<link rel="manifest" href="/manifest.json" />
+<meta name="theme-color" content="#16241C" />
 <link rel="stylesheet" href="/theme.css" />
 <style>
   html, body { height: 100%; background: var(--ink); }
@@ -38,6 +40,9 @@
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
 <script>
 'use strict';
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => { navigator.serviceWorker.register('/sw.js').catch(() => {}); });
+}
 const h = React.createElement;
 
 function formatLocalDate(d) {

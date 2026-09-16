@@ -209,6 +209,29 @@ describe('POST /api/farmers/register', () => {
     expect(res.status).toBe(400);
   });
 
+  test('replaying the same Idempotency-Key returns the original registration, not a duplicate-mobile conflict', async () => {
+    const { app } = setup();
+    const agent = await verifiedRegAgent(app, '9876500099');
+
+    const first = await agent
+      .post('/api/farmers/register')
+      .set('Idempotency-Key', 'reg-key-1')
+      .send({ name: 'Replay Farmer', mobile: '9876500099' });
+    expect(first.status).toBe(201);
+
+    // Simulates the offline outbox (public/offline-queue.js) replaying a
+    // queued registration after reconnecting, having never seen the
+    // first response -- without idempotency this would 409 on the
+    // now-taken mobile number instead of returning the same farmerId.
+    const replay = await agent
+      .post('/api/farmers/register')
+      .set('Idempotency-Key', 'reg-key-1')
+      .send({ name: 'Replay Farmer', mobile: '9876500099' });
+    expect(replay.status).toBe(201);
+    expect(replay.body).toEqual(first.body);
+    expect(replay.headers['idempotency-replayed']).toBe('true');
+  });
+
   test('a khasra matching a land record under the same name registers as verified', async () => {
     const { app, pool } = setup();
     await insertLandRecord(pool, { landRecordNumber: 'KH-1024', farmerName: 'Suresh Naik', extentAcres: 4 });

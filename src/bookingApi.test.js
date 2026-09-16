@@ -89,6 +89,43 @@ describe('POST /api/bookings', () => {
     expect(bookings.rowCount).toBe(1); // the duplicate attempt left no trace
   });
 
+  test('replaying the same Idempotency-Key returns the original booking, not an ALREADY_BOOKED conflict', async () => {
+    const { app, agent, pool } = setup();
+    const centreId = await insertCentre(pool);
+    await insertDailyInputs(pool, { centreId, serviceDate: DATE });
+    const farmerId = await insertFarmerWithLand(pool, { extentAcres: 5 });
+
+    const first = await agent
+      .post('/api/bookings')
+      .set('Idempotency-Key', 'book-key-1')
+      .send({ farmerId, quintals: 10, centreId, date: DATE });
+    expect(first.status).toBe(201);
+
+    // Simulates the offline outbox (public/offline-queue.js) replaying a
+    // queued booking after reconnecting, having never seen the first
+    // response -- without idempotency this would 409 ALREADY_BOOKED
+    // instead of handing back the same booking that already succeeded.
+    const replay = await agent
+      .post('/api/bookings')
+      .set('Idempotency-Key', 'book-key-1')
+      .send({ farmerId, quintals: 10, centreId, date: DATE });
+    expect(replay.status).toBe(201);
+    expect(replay.body).toEqual(first.body);
+    expect(replay.headers['idempotency-replayed']).toBe('true');
+
+    const bookings = await pool.query('SELECT * FROM bookings WHERE farmer_id = $1', [farmerId]);
+    expect(bookings.rowCount).toBe(1); // the replay never re-ran the handler
+
+    // A genuinely different request (no key, or a different one) is
+    // still rejected normally -- idempotency only short-circuits an
+    // exact replay, it doesn't relax the one-booking-per-date rule.
+    const distinctAttempt = await agent
+      .post('/api/bookings')
+      .set('Idempotency-Key', 'book-key-2')
+      .send({ farmerId, quintals: 10, centreId, date: DATE });
+    expect(distinctAttempt.status).toBe(409);
+  });
+
   test('unknown farmer returns 404, not a review flag', async () => {
     const { app, agent, pool } = setup();
     const centreId = await insertCentre(pool);

@@ -6,6 +6,7 @@ const { scanLot, markServed, lookupByToken } = require('./queueService');
 const { requireAuth, requireRole, requireBookingCentreScope } = require('./authMiddleware');
 const queueEvents = require('./queueEvents');
 const { todayInIST } = require('./todayInIST');
+const { idempotentReplay, recordIdempotentResponse } = require('./idempotency');
 
 const STATUS_BY_RESULT_TYPE = {
   NOT_FOUND: 404,
@@ -83,6 +84,21 @@ function createLotRoutes(pool, { now = todayInIST } = {}) {
   // route's own `:id`, and req.params would be empty here otherwise.
   router.use('/:id', requireAuth, requireBookingCentreScope(pool));
 
+  // Placed after the shared '/:id' auth/centre-scope middleware above, so
+  // replaying a stale key still requires the same centre-scoped
+  // authorization the original request needed -- see idempotency.js.
+  // Wired into scan/serve only: the two actions the gate queue's offline
+  // outbox (see public/offline-queue.js and queue.html) actually
+  // replays -- a retried scan must not re-check-in an already-checked-in
+  // lot, and a retried serve must not call the same lot forward twice.
+  function idempotent(req, res, next) {
+    idempotentReplay(pool, req, res).then((replayed) => {
+      if (replayed) return;
+      recordIdempotentResponse(pool, req, res);
+      next();
+    }, next);
+  }
+
   router.post(
     '/:id/checkin',
     (req, res, next) => {
@@ -99,6 +115,7 @@ function createLotRoutes(pool, { now = todayInIST } = {}) {
   // queue screens/board once committed.
   router.post(
     '/:id/scan',
+    idempotent,
     (req, res, next) => {
       if (!isNonEmptyString(req.body && req.body.token)) {
         return res.status(400).json({ status: 'BAD_REQUEST', message: 'token is required' });
@@ -118,6 +135,7 @@ function createLotRoutes(pool, { now = todayInIST } = {}) {
   // touches bookings.status.
   router.post(
     '/:id/serve',
+    idempotent,
     lotAction(
       pool,
       (client, bookingId) => markServed(client, bookingId),

@@ -4,11 +4,19 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Kisan Slot — Farmer Registration</title>
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#16241C">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Mukta:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/theme.css">
 <script src="/validation.js"></script>
+<script src="/offline-queue.js"></script>
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => { navigator.serviceWorker.register('/sw.js').catch(() => {}); });
+}
+</script>
 <style>
   /* Phone-first, single column throughout; every tappable control meets
      the 44px touch-target minimum (see theme.css --touch-min). Palette,
@@ -240,6 +248,11 @@
 
 <div class="wrap">
 
+  <!-- Populated by refreshOutboxBadge() (see offline-queue.js) -- only
+       ever shown while something is actually queued, so it never claims
+       "will sync" when there's nothing pending. -->
+  <div class="callout callout-warning hide" id="outboxBadge" style="margin-bottom:1rem"></div>
+
   <!-- Stepper -->
   <div class="steps" id="stepper">
     <div class="prog" id="prog"></div>
@@ -462,7 +475,12 @@ const T = {
     ck_id:"Identity (Aadhaar + OTP)",ck_land:"Land record",ck_bank:"Bank + Aadhaar link",
     loginNow:"Log in now",
     done:"Register another farmer",
-    err_register:"Registration failed. Please try again."
+    err_register:"Registration failed. Please try again.",
+    queued_title:"You're offline — saved on this device",
+    queued_status:"☁ Saved, will sync",
+    queued_msg:"This registration will be sent as soon as this device is back online. No need to fill the form again.",
+    queued_ok:"OK",
+    outbox_pending:"{n} saved registration(s) will sync once you reconnect."
   },
   hi:{
     appName:"किसान स्लॉट", appSub:"MSP बिक्री हेतु किसान पंजीकरण",
@@ -518,7 +536,12 @@ const T = {
     ck_id:"पहचान (आधार + OTP)",ck_land:"भूमि रिकॉर्ड",ck_bank:"बैंक + आधार लिंक",
     loginNow:"अभी लॉगिन करें",
     done:"अन्य किसान पंजीकृत करें",
-    err_register:"पंजीकरण विफल रहा। कृपया पुनः प्रयास करें।"
+    err_register:"पंजीकरण विफल रहा। कृपया पुनः प्रयास करें।",
+    queued_title:"आप ऑफ़लाइन हैं — इस डिवाइस पर सेव हो गया",
+    queued_status:"☁ सेव हो गया, सिंक होगा",
+    queued_msg:"नेटवर्क वापस आते ही यह पंजीकरण भेज दिया जाएगा। फॉर्म दोबारा भरने की ज़रूरत नहीं।",
+    queued_ok:"ठीक है",
+    outbox_pending:"नेटवर्क वापस आते ही {n} सेव पंजीकरण सिंक हो जाएँगे।"
   }
 };
 
@@ -572,6 +595,7 @@ function applyLang(){
     const badgeText=document.getElementById('operatorBadgeText');
     if(badgeText) badgeText.textContent=t('operatorActiveLabel');
   }
+  if(typeof refreshOutboxBadge==='function') refreshOutboxBadge();
 }
 function setLang(l){
   lang=l;
@@ -783,19 +807,41 @@ async function runVerify(){
   btn.disabled=true;
   btn.textContent='…';
 
-  const { httpStatus, body } = await postJson('/api/farmers/register', {
-    name: val('name'),
-    mobile: KisanValidation.normalizeMobile(val('mobile')),
-    aadhaar: val('aadhaar'),
-    khasra: val('khasra'),
-    landSizeAcres: parseFloat(val('landsize')) || null,
-    crop: val('crop'),
-    bankAccountNumber: val('acc'),
-    bankIfsc: val('ifsc'),
-  });
+  // Offline (or unreachable) -- queued instead of lost, replayed once
+  // this device reconnects (see offline-queue.js and idempotency.js).
+  // This form is long -- filling it out again after signal drops right
+  // at submit would be a real cost to a farmer, not just an inconvenience.
+  const outcome = await KisanOutbox.fetchOrQueue(
+    '/api/farmers/register',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: val('name'),
+        mobile: KisanValidation.normalizeMobile(val('mobile')),
+        aadhaar: val('aadhaar'),
+        khasra: val('khasra'),
+        landSizeAcres: parseFloat(val('landsize')) || null,
+        crop: val('crop'),
+        bankAccountNumber: val('acc'),
+        bankIfsc: val('ifsc'),
+      }),
+    },
+    'Register farmer'
+  );
 
   btn.disabled=false;
   btn.textContent=t('b_verify');
+
+  if(outcome.queued){
+    rv.innerHTML = `<div class="result"><div class="badge b-wait">☁</div><h2>${t('queued_title')}</h2><div><span class="status-line s-wait">${t('queued_status')}</span></div><p style="margin-top:14px">${t('queued_msg')}</p><div class="actions" style="justify-content:center"><button class="btn btn-primary" onclick="resetAll()">${t('queued_ok')}</button></div></div>`;
+    rv.classList.remove('hide');
+    document.getElementById('reviewView').classList.add('hide');
+    window.scrollTo({top:0,behavior:'smooth'});
+    return;
+  }
+
+  const { httpStatus, body } = outcome;
 
   if(httpStatus!==201){
     rv.innerHTML = `<div class="result"><div class="badge b-wait">!</div><h2>${t('err_register')}</h2><p>${body.message||(body.errors||[]).join(', ')||''}</p></div>`;
@@ -860,9 +906,25 @@ function resetAll(){
   go(0);
 }
 
+/* ---------- Offline outbox badge -- see offline-queue.js ---------- */
+function refreshOutboxBadge(){
+  if(!window.KisanOutbox) return;
+  KisanOutbox.count().then((n) => {
+    const el = document.getElementById('outboxBadge');
+    if(n === 0){ el.classList.add('hide'); return; }
+    el.textContent = interpolate(t('outbox_pending'), { n });
+    el.classList.remove('hide');
+  }).catch(() => {});
+}
+if (window.KisanOutbox) {
+  KisanOutbox.onChange(refreshOutboxBadge);
+  window.addEventListener('online', refreshOutboxBadge);
+}
+
 /* init */
 applyLang();
 go(0,{initial:true});
+refreshOutboxBadge();
 initSession();
 </script>
 </body>
