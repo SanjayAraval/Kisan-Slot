@@ -272,7 +272,7 @@ if ('serviceWorker' in navigator) {
     <div class="assist-banner">👥 <span data-t="assistBanner">Operator mode — the code still goes to the farmer's own number</span></div>
 
     <label data-t="l_mobile">Mobile number <span class="req">*</span></label>
-    <input id="mobile" type="tel" inputmode="tel" maxlength="14" placeholder="10-digit mobile number" oninput="mobileChars(this)">
+    <input id="mobile" type="tel" inputmode="numeric" maxlength="10" placeholder="10-digit mobile number" oninput="digitsOnly(this)">
     <div class="errmsg" data-t="e_mobile">Enter a valid 10-digit mobile number</div>
 
     <div class="otp-sent" id="otpSent"></div>
@@ -378,11 +378,11 @@ if ('serviceWorker' in navigator) {
     <div class="assist-banner">👥 <span data-t="assistBanner4">Operator mode — enter the farmer's bank account</span></div>
 
     <label data-t="l_acc">Account number <span class="req">*</span></label>
-    <input id="acc" inputmode="numeric" maxlength="25" placeholder="Bank account number" oninput="onAccInput(this)">
+    <input id="acc" inputmode="numeric" maxlength="18" placeholder="Bank account number" oninput="onAccInput(this)">
     <div class="errmsg" data-t="e_acc">Enter a valid 9-18 digit account number</div>
 
     <label data-t="l_acc2">Re-enter account number <span class="req">*</span></label>
-    <input id="acc2" inputmode="numeric" maxlength="25" placeholder="Confirm account number" oninput="digitsOnly(this)">
+    <input id="acc2" inputmode="numeric" maxlength="18" placeholder="Confirm account number" oninput="digitsOnly(this)">
     <div class="errmsg" data-t="e_acc2">Account numbers do not match</div>
 
     <label data-t="l_ifsc">IFSC code <span class="req">*</span></label>
@@ -606,13 +606,9 @@ function setLang(l){
 /* ---------- input helpers ---------- */
 function digitsOnly(el){el.value=el.value.replace(/\D/g,'')}
 function decimalOnly(el){el.value=el.value.replace(/[^\d.]/g,'').replace(/(\..*)\./g,'$1')}
-// Allows +91 / 91 / a leading 0 / spaces / hyphens while typing -- stripped
-// by KisanValidation.normalizeMobile before validating or sending.
-function mobileChars(el){el.value=el.value.replace(/[^\d+\s-]/g,'')}
 function setErr(id,on){document.getElementById(id).classList.toggle('err',on);return !on}
-// Live feedback as the account number is typed -- input isn't capped at 18
-// digits (maxlength is deliberately looser) so going over the limit shows
-// an error immediately instead of just silently dropping keystrokes.
+// Live feedback as the account number is typed -- maxlength stops a digit
+// count over 18, but not one still short of the 9-digit minimum.
 function onAccInput(el){
   digitsOnly(el);
   if(!el.value){ setErr('acc',false); return; }
