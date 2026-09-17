@@ -120,12 +120,15 @@ if ('serviceWorker' in navigator) {
     min-height:44px;transition:border-color .15s,outline-color .15s;
   }
   .hint{font-size:.76rem;color:var(--ink-60);margin-top:5px}
-  /* This page toggles the .err class on the <input> itself (see setErr()
-     in the script below) and relies on this sibling selector to reveal
-     the matching message -- theme.css's own .field-error is for pages
-     that render the message conditionally from JS instead. */
+  /* This page toggles the .err class on the field itself and shows/hides
+     its matching error element directly (see setErr() in the script
+     below) -- theme.css's own .field-error is for pages that render the
+     message conditionally from JS instead. Deliberately not a
+     `field.err ~ .errmsg{display:block}` sibling rule: several fields
+     share one flat parent (see the Identity step), and a *general*
+     sibling combinator would reveal a later field's message too
+     whenever an earlier one was invalid, not just its own. */
   .errmsg{font-size:.78rem;color:var(--red);font-weight:600;margin-top:5px;display:none}
-  input.err ~ .errmsg{display:block}
   .row2{display:flex;gap:12px}
   .row2>div{flex:1}
 
@@ -268,7 +271,7 @@ if ('serviceWorker' in navigator) {
 
     <label data-t="l_mobile">Mobile number <span class="req">*</span></label>
     <input id="mobile" type="tel" inputmode="numeric" maxlength="10" placeholder="10-digit mobile number" oninput="digitsOnly(this)">
-    <div class="errmsg" data-t="e_mobile">Enter a valid 10-digit mobile number</div>
+    <div class="errmsg" id="mobileErr" data-t="e_mobile">Enter a valid 10-digit mobile number</div>
 
     <div class="otp-sent" id="otpSent"></div>
     <div id="otpBlock" class="hide">
@@ -298,35 +301,33 @@ if ('serviceWorker' in navigator) {
 
     <label data-t="l_name">Full name <span class="req">*</span></label>
     <input id="name" placeholder="Farmer's full name">
-    <div class="errmsg" data-t="e_name">Name is required</div>
+    <div class="errmsg" id="nameErr" data-t="e_name">Name is required</div>
 
     <label data-t="l_aadhaar">Aadhaar number <span class="req">*</span></label>
     <input id="aadhaar" inputmode="numeric" maxlength="12" placeholder="12-digit Aadhaar" oninput="digitsOnly(this)">
     <div class="hint" data-t="h_aadhaar">In production this is verified by UIDAI eKYC / biometric</div>
-    <div class="errmsg" data-t="e_aadhaar">Aadhaar must be exactly 12 digits</div>
+    <div class="errmsg" id="aadhaarErr" data-t="e_aadhaar">Aadhaar must be exactly 12 digits</div>
 
     <div class="row2">
       <div>
         <label data-t="l_village">Village <span class="req">*</span></label>
         <input id="village" placeholder="Village">
-        <div class="errmsg" data-t="e_village">Required</div>
+        <div class="errmsg" id="villageErr" data-t="e_village">Required</div>
       </div>
       <div>
         <label data-t="l_district">District <span class="req">*</span></label>
         <input id="district" placeholder="District">
-        <div class="errmsg" data-t="e_district">Required</div>
+        <div class="errmsg" id="districtErr" data-t="e_district">Required</div>
       </div>
     </div>
 
     <label data-t="l_crop">Crop <span class="req">*</span></label>
     <select id="crop">
       <option value="" data-t="opt_choose">Choose crop…</option>
-      <option value="Wheat" data-t="opt_wheat">Wheat</option>
-      <option value="Paddy" data-t="opt_paddy">Paddy (Rice)</option>
-      <option value="Gram" data-t="opt_gram">Gram</option>
-      <option value="Mustard" data-t="opt_mustard">Mustard</option>
+      <option value="Paddy Common" data-t="opt_paddy common">Paddy (Common)</option>
+      <option value="Paddy Grade A" data-t="opt_paddy grade a">Paddy (Grade A)</option>
     </select>
-    <div class="errmsg" data-t="e_crop">Please choose a crop</div>
+    <div class="errmsg" id="cropErr" data-t="e_crop">Please choose a crop</div>
 
     <div class="actions">
       <button class="btn btn-ghost" onclick="history.back()" data-t="b_back">Back</button>
@@ -342,14 +343,14 @@ if ('serviceWorker' in navigator) {
     <div class="assist-banner"><span data-icon="operator" data-icon-size="18"></span><span data-t="assistBanner3">Operator mode — enter the farmer's land record</span></div>
 
     <label data-t="l_khasra">Khasra / Khatauni number <span class="req">*</span></label>
-    <input id="khasra" placeholder="e.g. KH-1024" oninput="this.value=this.value.toUpperCase()" onblur="lookupKhasra()">
+    <input id="khasra" placeholder="e.g. MDK-DHARANI-000001" oninput="this.value=this.value.toUpperCase()" onblur="lookupKhasra()">
     <div class="hint" data-t="h_khasra">Looked up live against the land records database as you type.</div>
-    <div class="errmsg" data-t="e_khasra">Land record number is required</div>
+    <div class="errmsg" id="khasraErr" data-t="e_khasra">Land record number is required</div>
     <div id="khasraMatch" class="khasra-match hide"></div>
 
     <label data-t="l_landsize">Land size (acres) <span class="req">*</span></label>
     <input id="landsize" inputmode="decimal" placeholder="e.g. 3.5" oninput="decimalOnly(this)">
-    <div class="errmsg" data-t="e_landsize">Enter land size in acres</div>
+    <div class="errmsg" id="landsizeErr" data-t="e_landsize">Enter land size in acres</div>
 
     <label data-t="l_qty">Quantity to sell (quintals) <span class="req">*</span></label>
     <input id="qty" inputmode="decimal" placeholder="e.g. 40" oninput="decimalOnly(this)">
@@ -371,16 +372,16 @@ if ('serviceWorker' in navigator) {
 
     <label data-t="l_acc">Account number <span class="req">*</span></label>
     <input id="acc" inputmode="numeric" maxlength="18" placeholder="Bank account number" oninput="onAccInput(this)">
-    <div class="errmsg" data-t="e_acc">Enter a valid 9-18 digit account number</div>
+    <div class="errmsg" id="accErr" data-t="e_acc">Enter a valid 9-18 digit account number</div>
 
     <label data-t="l_acc2">Re-enter account number <span class="req">*</span></label>
     <input id="acc2" inputmode="numeric" maxlength="18" placeholder="Confirm account number" oninput="digitsOnly(this)">
-    <div class="errmsg" data-t="e_acc2">Account numbers do not match</div>
+    <div class="errmsg" id="acc2Err" data-t="e_acc2">Account numbers do not match</div>
 
     <label data-t="l_ifsc">IFSC code <span class="req">*</span></label>
     <input id="ifsc" maxlength="11" placeholder="e.g. SBIN0001234" oninput="this.value=this.value.toUpperCase()">
     <div class="hint" data-t="h_ifsc">Aadhaar must be linked to this account for PFMS payment</div>
-    <div class="errmsg" data-t="e_ifsc">Enter a valid IFSC (e.g. SBIN0001234)</div>
+    <div class="errmsg" id="ifscErr" data-t="e_ifsc">Enter a valid IFSC (e.g. SBIN0001234)</div>
 
     <div class="actions">
       <button class="btn btn-ghost" onclick="history.back()" data-t="b_back">Back</button>
@@ -453,7 +454,7 @@ const T = {
     e_aadhaar:"Aadhaar must be exactly 12 digits",
     l_village:"Village",e_village:"Required",l_district:"District",e_district:"Required",
     l_crop:"Crop",e_crop:"Please choose a crop",
-    opt_choose:"Choose crop…",opt_wheat:"Wheat",opt_paddy:"Paddy (Rice)",opt_gram:"Gram",opt_mustard:"Mustard",
+    opt_choose:"Choose crop…", "opt_paddy common":"Paddy (Common)", "opt_paddy grade a":"Paddy (Grade A)",
     t3:"Land records",d3:"Looked up from the state revenue database",
     l_khasra:"Khasra / Khatauni number",
     h_khasra:"Looked up live against the land records database as you type.",
@@ -514,7 +515,7 @@ const T = {
     e_aadhaar:"आधार बिल्कुल 12 अंकों का होना चाहिए",
     l_village:"गाँव",e_village:"आवश्यक",l_district:"जिला",e_district:"आवश्यक",
     l_crop:"फसल",e_crop:"कृपया फसल चुनें",
-    opt_choose:"फसल चुनें…",opt_wheat:"गेहूँ",opt_paddy:"धान (चावल)",opt_gram:"चना",opt_mustard:"सरसों",
+    opt_choose:"फसल चुनें…", "opt_paddy common":"धान (कॉमन)", "opt_paddy grade a":"धान (ग्रेड ए)",
     t3:"भूमि रिकॉर्ड",d3:"राज्य राजस्व डेटाबेस से प्राप्त",
     l_khasra:"खसरा / खतौनी नंबर",
     h_khasra:"टाइप करते ही भूमि रिकॉर्ड डेटाबेस से लाइव जाँचा जाता है।",
@@ -611,13 +612,33 @@ function setLang(l){
 /* ---------- input helpers ---------- */
 function digitsOnly(el){el.value=el.value.replace(/\D/g,'')}
 function decimalOnly(el){el.value=el.value.replace(/[^\d.]/g,'').replace(/(\..*)\./g,'$1')}
-function setErr(id,on){document.getElementById(id).classList.toggle('err',on);return !on}
+// `err` is normally a KisanValidation.* validator's own return value --
+// a message string when invalid, null/undefined when valid -- so each
+// field's error element shows exactly what failed (e.g. validateAadhaar
+// returns one of three distinct messages: wrong length, starts with 0
+// or 1, or a failed checksum) instead of one hardcoded string regardless
+// of the real reason. A plain boolean is still accepted for the couple
+// of checks with no validator message of their own (crop, the acc2
+// mismatch): true falls back to whatever static text is already on the
+// field's error element (via its data-t key), false clears it. Looked
+// up by '<id>Err' (see e.g. #qtyErr) rather than via a CSS sibling rule
+// -- see the .errmsg comment above for why. Returns !err so every call
+// site's existing `ok &= setErr(...)` accumulation still works.
+function setErr(id,err){
+  document.getElementById(id).classList.toggle('err',!!err);
+  const msgEl=document.getElementById(id+'Err');
+  if(msgEl){
+    msgEl.textContent = typeof err==='string' ? err : t(msgEl.getAttribute('data-t'));
+    msgEl.style.display = err ? 'block' : 'none';
+  }
+  return !err;
+}
 // Live feedback as the account number is typed -- maxlength stops a digit
 // count over 18, but not one still short of the 9-digit minimum.
 function onAccInput(el){
   digitsOnly(el);
   if(!el.value){ setErr('acc',false); return; }
-  setErr('acc', !!KisanValidation.validateBankAccount(el.value));
+  setErr('acc', KisanValidation.validateBankAccount(el.value));
 }
 function otpHop(el,i){
   el.value=el.value.replace(/\D/g,'');
@@ -661,7 +682,8 @@ async function sendOrVerifyOtp(){
   const m=document.getElementById('mobile');
   const btn=document.getElementById('mobileBtn');
   if(!otpStage){
-    if(KisanValidation.validateMobile(m.value)){setErr('mobile',true);return}
+    const mobileErr=KisanValidation.validateMobile(m.value);
+    if(mobileErr){setErr('mobile',mobileErr);return}
     setErr('mobile',false);
     const sendLabel=btn.textContent;
     btn.disabled=true;
@@ -753,31 +775,31 @@ const CLIENT_OVER_DECLARE_CAP_MULTIPLIER = 1.3;
 function nextFrom(s){
   let ok=true;
   if(s===1){
-    ok &= setErr('name',!!KisanValidation.validateName(document.getElementById('name').value));
-    ok &= setErr('aadhaar',!!KisanValidation.validateAadhaar(document.getElementById('aadhaar').value));
-    ok &= setErr('village',!!KisanValidation.validatePlaceName(document.getElementById('village').value,'Village'));
-    ok &= setErr('district',!!KisanValidation.validatePlaceName(document.getElementById('district').value,'District'));
+    ok &= setErr('name',KisanValidation.validateName(document.getElementById('name').value));
+    ok &= setErr('aadhaar',KisanValidation.validateAadhaar(document.getElementById('aadhaar').value));
+    ok &= setErr('village',KisanValidation.validatePlaceName(document.getElementById('village').value,'Village'));
+    ok &= setErr('district',KisanValidation.validatePlaceName(document.getElementById('district').value,'District'));
     ok &= setErr('crop',!document.getElementById('crop').value);
     if(ok) go(2);
   }
   if(s===2){
-    ok &= setErr('khasra',!!KisanValidation.validateKhasra(document.getElementById('khasra').value));
+    ok &= setErr('khasra',KisanValidation.validateKhasra(document.getElementById('khasra').value));
     const landRaw=document.getElementById('landsize').value;
     const land=parseFloat(landRaw);
     const { error: landErr } = KisanValidation.validateLandSize(landRaw);
-    ok &= setErr('landsize',!!landErr);
+    ok &= setErr('landsize',landErr);
     const landCap = land>0 ? Math.round(land*CLIENT_YIELD_QUINTALS_PER_ACRE*CLIENT_OVER_DECLARE_CAP_MULTIPLIER*100)/100 : null;
-    ok &= setErr('qty',!!KisanValidation.validateQuantity(document.getElementById('qty').value, landCap));
+    ok &= setErr('qty',KisanValidation.validateQuantity(document.getElementById('qty').value, landCap));
     if(ok) go(3);
   }
   if(s===3){
     const a=document.getElementById('acc').value, a2=document.getElementById('acc2').value;
-    ok &= setErr('acc',!!KisanValidation.validateBankAccount(a));
+    ok &= setErr('acc',KisanValidation.validateBankAccount(a));
     ok &= setErr('acc2',!a2 || a!==a2);
     const ifsc=document.getElementById('ifsc');
     const { error: ifscErr, value: ifscValue } = KisanValidation.validateIfsc(ifsc.value);
     ifsc.value = ifscValue;
-    ok &= setErr('ifsc',!!ifscErr);
+    ok &= setErr('ifsc',ifscErr);
     if(ok){ go(4); buildReview(); }
   }
 }

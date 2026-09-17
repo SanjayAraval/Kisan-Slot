@@ -152,7 +152,15 @@ function StatCard({ value, label, risk }) {
 // precision here would misrepresent how close a centre actually is.
 // Pluralised against the real number, not the formatted string, so an
 // exact 1 reads "1.0 day" rather than "1.0 days".
+// Capped display-side only -- a centre with no recent burn history for
+// days (so the rolling burn rate is tiny) can otherwise divide out to
+// something like "5469.7 days", which reads as a data error rather than
+// "effectively unlimited cover". Never affects the < 1.5-day at-risk
+// threshold, which still compares the real, uncapped value.
+const DAYS_OF_COVER_DISPLAY_CAP = 30;
+
 function formatDaysOfCover(daysOfCover) {
+  if (daysOfCover > DAYS_OF_COVER_DISPLAY_CAP) return `${DAYS_OF_COVER_DISPLAY_CAP}+ days`;
   return `${daysOfCover.toFixed(1)} ${daysOfCover === 1 ? 'day' : 'days'}`;
 }
 
