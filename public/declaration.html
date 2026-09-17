@@ -34,7 +34,8 @@
   .stat .l { font-size: 0.78rem; color: var(--ink-60); }
   tr.binding td { color: var(--red-ink); font-weight: 700; }
   tr.binding { background: var(--red-bg); }
-  .link-btn { background: none; border: none; color: var(--green); font-weight: 600; cursor: pointer; padding: 0; text-decoration: underline; min-height: auto; }
+  .link-btn { background: none; border: none; color: var(--green); font-weight: 600; cursor: pointer; padding: 0; text-decoration: underline; min-height: auto; display: inline-flex; align-items: center; gap: 0.3em; }
+  .icon-link { display: inline-flex; align-items: center; gap: 0.3em; }
 </style>
 </head>
 <body>
@@ -49,6 +50,30 @@ if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => { navigator.serviceWorker.register('/sw.js').catch(() => {}); });
 }
 const h = React.createElement;
+
+// One reusable stroke-icon primitive -- 24x24, currentColor throughout,
+// so it inherits whatever text colour its link/button already has.
+function Icon({ size = 18, children }) {
+  return h('svg', {
+    width: size, height: size, viewBox: '0 0 24 24', fill: 'none',
+    stroke: 'currentColor', strokeWidth: '2', strokeLinecap: 'round', strokeLinejoin: 'round',
+    'aria-hidden': 'true',
+  }, children);
+}
+
+const LIVE_QUEUE_ICON = [
+  h('path', { key: 0, d: 'M4 5h10' }),
+  h('path', { key: 1, d: 'M4 12h10' }),
+  h('path', { key: 2, d: 'M4 19h6' }),
+  h('circle', { key: 3, cx: 18, cy: 19, r: 3 }),
+  h('path', { key: 4, d: 'M18 17.6V19l1 .8' }),
+];
+
+const LOG_OUT_ICON = [
+  h('path', { key: 0, d: 'M14 21h4a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2h-4' }),
+  h('path', { key: 1, d: 'M9 16l-4-4 4-4' }),
+  h('path', { key: 2, d: 'M5 12h11' }),
+];
 
 // Baseline used only when a centre has no declaration on file yet for
 // the chosen date -- lets the officer complete a first declaration
@@ -336,11 +361,11 @@ function App() {
       h('a', { href: '/dashboard.html' }, 'District officer dashboard →')
     ),
     session.role === 'centre_officer' && h('p', { style: { fontSize: '0.85rem', marginTop: '-0.75rem', marginBottom: 'var(--space-2)' } },
-      h('a', { href: '/queue.html' }, 'Live queue →')
+      h('a', { href: '/queue.html', className: 'icon-link' }, h(Icon, { size: 18 }, LIVE_QUEUE_ICON), 'Live queue →')
     ),
     h('p', { style: { fontSize: '0.8rem', color: 'var(--ink-60)', marginTop: 0, marginBottom: 'var(--space-4)' } },
       `Logged in as ${session.name} (${session.role.replace('_', ' ')})`, ' · ',
-      h('button', { className: 'link-btn', onClick: logout }, 'Log out')
+      h('button', { className: 'link-btn', onClick: logout }, h(Icon, { size: 18 }, LOG_OUT_ICON), 'Log out')
     ),
 
     error && h('div', { className: 'callout callout-danger', style: { marginBottom: 'var(--space-4)' } }, error),

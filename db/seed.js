@@ -735,7 +735,7 @@ async function batchInsert(client, table, columns, rows, getValues, chunkSize = 
 
 async function writeToDatabase({ centres, centreDailyInputs, centreDays, landRecords, farmers, bookings, weighments, employees }) {
   const { Client } = require('pg');
-  const client = new Client();
+    const client = new Client(process.env.DATABASE_URL ? { connectionString: process.env.DATABASE_URL } : {});
   await client.connect();
 
   try {

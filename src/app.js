@@ -48,20 +48,23 @@ function validateBookingBody(body, today) {
 }
 
 // The default CSP (script-src/connect-src 'self' only) would block every
-// page in public/ -- they all load React, QR libraries and Tailwind's
-// Play CDN from unpkg/cdnjs/cdn.tailwindcss.com as inline <script> blocks
-// (no bundler -- see CLAUDE.md's stack note), and farmer.html's rain
-// advisory calls Open-Meteo directly from the browser. Everything else
+// page in public/ -- they all load React and Tailwind's Play CDN from
+// unpkg/cdn.tailwindcss.com as inline <script> blocks (no bundler -- see
+// CLAUDE.md's stack note), and farmer.html's rain advisory calls
+// Open-Meteo directly from the browser. cdnjs.cloudflare.com used to be
+// here too (Font Awesome, qrcodejs) -- both are now served locally from
+// public/ (see farmer.html's inline SVG icons and public/vendor/), so
+// it's dropped rather than left allowlisted for nothing. Everything else
 // (frame-ancestors, object-src, the COOP/CORP/HSTS headers, etc.) stays
 // at helmet's default, already-strict setting.
-const CSP_SCRIPT_SOURCES = ["'self'", "'unsafe-inline'", 'https://unpkg.com', 'https://cdnjs.cloudflare.com', 'https://cdn.tailwindcss.com'];
+const CSP_SCRIPT_SOURCES = ["'self'", "'unsafe-inline'", 'https://unpkg.com', 'https://cdn.tailwindcss.com'];
 // Same CDN hosts as script-src, plus Open-Meteo -- connect-src (not
 // script-src) is what governs fetch()/XHR, which covers both
 // farmer.html's rain-advisory call *and* sw.js's own runtime-caching
 // fetches for those CDN assets (see public/sw.js's RUNTIME_CACHE_HOSTS --
 // a service worker's fetches are governed by the CSP its own script was
 // served with, same as the page that registered it).
-const CSP_CONNECT_SOURCES = ["'self'", 'https://api.open-meteo.com', 'https://unpkg.com', 'https://cdnjs.cloudflare.com', 'https://cdn.tailwindcss.com'];
+const CSP_CONNECT_SOURCES = ["'self'", 'https://api.open-meteo.com', 'https://unpkg.com', 'https://cdn.tailwindcss.com'];
 
 // Blanket protection against a client hammering any endpoint -- separate
 // from loginRateLimiter.js, which tracks failed /api/auth/login attempts

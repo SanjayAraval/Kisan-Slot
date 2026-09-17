@@ -6,7 +6,6 @@
 <title>Kisan Slot — Farmer</title>
 <link rel="manifest" href="/manifest.json" />
 <meta name="theme-color" content="#16241C" />
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
 <!-- Linked before the Tailwind CDN script so Tailwind's generated rules
      (equal-or-higher specificity, later in the cascade) win any
      property tie -- this page keeps its existing Tailwind utility
@@ -59,7 +58,7 @@
 
 <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="/vendor/qrcode.min.js"></script>
 <script src="/validation.js"></script>
 <script src="/offline-queue.js"></script>
 <script>
@@ -69,6 +68,86 @@ if ('serviceWorker' in navigator) {
 }
 const h = React.createElement;
 const { useState, useEffect, useMemo, useCallback, useRef, useContext, createContext } = React;
+
+// One reusable stroke-icon primitive -- 24x24, currentColor throughout,
+// so it inherits whatever text colour its button/tab already has
+// (including the dark-selected tab state).
+function Icon({ size = 18, children }) {
+  return h('svg', {
+    width: size, height: size, viewBox: '0 0 24 24', fill: 'none',
+    stroke: 'currentColor', strokeWidth: '2', strokeLinecap: 'round', strokeLinejoin: 'round',
+    'aria-hidden': 'true',
+  }, children);
+}
+
+const LOG_OUT_ICON = [
+  h('path', { key: 0, d: 'M14 21h4a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2h-4' }),
+  h('path', { key: 1, d: 'M9 16l-4-4 4-4' }),
+  h('path', { key: 2, d: 'M5 12h11' }),
+];
+
+// The three bottom-nav tab icons -- calendar-with-check (Book),
+// list-with-clock (Status), document (J-Form).
+const TAB_ICONS = {
+  book: [
+    h('rect', { key: 0, x: 3, y: 4, width: 18, height: 18, rx: 2 }),
+    h('path', { key: 1, d: 'M3 10h18' }),
+    h('path', { key: 2, d: 'M8 2v4' }),
+    h('path', { key: 3, d: 'M16 2v4' }),
+    h('path', { key: 4, d: 'm9 16 2 2 4-4' }),
+  ],
+  status: [
+    h('path', { key: 0, d: 'M4 6h10' }),
+    h('path', { key: 1, d: 'M4 12h7' }),
+    h('path', { key: 2, d: 'M4 18h5' }),
+    h('circle', { key: 3, cx: 18, cy: 17, r: 4 }),
+    h('path', { key: 4, d: 'M18 15.3V17l1.2.9' }),
+  ],
+  jform: [
+    h('path', { key: 0, d: 'M14.5 2H7a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7.5Z' }),
+    h('path', { key: 1, d: 'M14 2v5h5' }),
+    h('path', { key: 2, d: 'M9 13h6' }),
+    h('path', { key: 3, d: 'M9 17h6' }),
+  ],
+};
+
+// One icon per lot-progress stage (Timeline below) -- gate entry, moisture
+// test, weighment, acknowledgement, bill raised, payment.
+const STAGE_ICONS = {
+  gate_entry: [
+    h('path', { key: 0, d: 'M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4' }),
+    h('path', { key: 1, d: 'M10 8l-4 4 4 4' }),
+    h('path', { key: 2, d: 'M6 12h11' }),
+  ],
+  moisture_test: [
+    h('path', { key: 0, d: 'M12 3s5.5 5.4 5.5 9.2A5.5 5.5 0 0 1 12 21a5.5 5.5 0 0 1-5.5-8.8C6.5 8.4 12 3 12 3Z' }),
+    h('path', { key: 1, d: 'M9.5 14.5l5-4' }),
+  ],
+  weighment: [
+    h('path', { key: 0, d: 'M12 3v17' }),
+    h('path', { key: 1, d: 'M8 20h8' }),
+    h('path', { key: 2, d: 'M4 7h16' }),
+    h('path', { key: 3, d: 'M5 7 2 14h6L5 7Z' }),
+    h('path', { key: 4, d: 'M19 7l-3 7h6l-3-7Z' }),
+  ],
+  acknowledgement: [
+    h('path', { key: 0, d: 'M9 4H7a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2' }),
+    h('rect', { key: 1, x: 9, y: 2, width: 6, height: 4, rx: 1 }),
+    h('path', { key: 2, d: 'M9 14l2 2 4-4' }),
+  ],
+  bill_raised: [
+    h('path', { key: 0, d: 'M6 2h12v20l-3-2-3 2-3-2-3 2V2Z' }),
+    h('path', { key: 1, d: 'M9.5 7h5' }),
+    h('path', { key: 2, d: 'M9.5 11h5' }),
+    h('path', { key: 3, d: 'M9.5 15h3' }),
+  ],
+  payment: [
+    h('rect', { key: 0, x: 2, y: 6, width: 20, height: 12, rx: 2 }),
+    h('circle', { key: 1, cx: 12, cy: 12, r: 2.6 }),
+    h('path', { key: 2, d: 'M5.5 12h.01' }),
+    h('path', { key: 3, d: 'M18.5 12h.01' }),
+  ],
+};
 
 // ---------------------------------------------------------------------------
 // Translations -- a flat key -> string dictionary per language. Every
@@ -549,14 +628,6 @@ function formatDateTime(value) {
 }
 
 const VERDICT_KEY = { accept: 'verdictAccept', cut: 'verdictCut', reject: 'verdictReject' };
-const STAGE_ICON = {
-  gate_entry: 'fa-door-open',
-  moisture_test: 'fa-droplet',
-  weighment: 'fa-weight-scale',
-  acknowledgement: 'fa-signature',
-  bill_raised: 'fa-file-invoice-dollar',
-  payment: 'fa-money-bill-wave',
-};
 const STAGE_LABEL_KEY = {
   gate_entry: 'stageGateEntry',
   moisture_test: 'stageMoistureTest',
@@ -574,13 +645,8 @@ function Card({ children, className }) {
   return h('div', { className: `bg-kisan-paperRaised border border-kisan-line rounded-2xl p-4 ${className || ''}` }, children);
 }
 
-function SectionHeading({ icon, children }) {
-  return h('h2', { className: 'flex items-center gap-2 text-base font-extrabold text-kisan-ink mt-5 mb-2' },
-    // Decorative only -- ink, not a status colour, since this icon
-    // signals nothing (colour here is reserved for real status/action).
-    h('i', { className: `fa-solid ${icon} text-kisan-ink/40 text-sm` }),
-    children
-  );
+function SectionHeading({ children }) {
+  return h('h2', { className: 'flex items-center gap-2 text-base font-extrabold text-kisan-ink mt-5 mb-2' }, children);
 }
 
 function Row({ k, v }) {
@@ -602,14 +668,13 @@ function Badge({ tone, children }) {
   return h('span', { className: `inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold border ${toneClass}` }, children);
 }
 
-function Callout({ tone, icon, children }) {
+function Callout({ tone, children }) {
   const toneClass = {
     success: 'bg-kisan-green/10 border-kisan-green/40',
     warning: 'bg-kisan-amber/10 border-kisan-amber/50',
     danger: 'bg-kisan-red/10 border-kisan-red/40',
   }[tone] || 'bg-kisan-ink/5 border-kisan-line';
   return h('div', { className: `rounded-2xl border p-4 flex items-start gap-2.5 ${toneClass}` },
-    icon && h('i', { className: `fa-solid ${icon} mt-1 flex-none` }),
     h('div', { className: 'min-w-0 flex-1' }, children)
   );
 }
@@ -617,14 +682,11 @@ function Callout({ tone, icon, children }) {
 // Gold is the one and only primary/"go" colour (see theme.css) -- every
 // primary action on this screen uses it, never green (green means
 // healthy/success status, not "click me").
-function PrimaryButton({ children, onClick, disabled, icon }) {
+function PrimaryButton({ children, onClick, disabled }) {
   return h('button', {
     type: 'button', onClick, disabled,
     className: 'w-full min-h-[3.25rem] flex items-center justify-center gap-2 rounded-2xl bg-kisan-gold text-white text-base font-extrabold active:scale-[0.99] transition disabled:opacity-50 disabled:cursor-default',
-  },
-    icon && h('i', { className: `fa-solid ${icon}` }),
-    children
-  );
+  }, children);
 }
 
 function SecondaryButton({ children, onClick, disabled }) {
@@ -634,11 +696,8 @@ function SecondaryButton({ children, onClick, disabled }) {
   }, children);
 }
 
-function FieldLabel({ icon, children }) {
-  return h('label', { className: 'flex items-center gap-2 text-sm font-bold text-kisan-ink mb-1.5' },
-    icon && h('i', { className: `fa-solid ${icon} text-kisan-ink/50 text-xs` }),
-    children
-  );
+function FieldLabel({ children }) {
+  return h('label', { className: 'flex items-center gap-2 text-sm font-bold text-kisan-ink mb-1.5' }, children);
 }
 
 const inputClass = 'w-full min-h-[3.25rem] text-base px-4 rounded-2xl border-2 border-kisan-line bg-kisan-paperRaised text-kisan-ink tabular-nums focus:outline-none focus:border-kisan-gold';
@@ -666,7 +725,7 @@ function LanguageSelector({ lang, onChange }) {
 
 function OfficerReviewCard({ farmer }) {
   const t = useT();
-  return h(Callout, { tone: 'warning', icon: 'fa-user-clock' },
+  return h(Callout, { tone: 'warning' },
     h('div', { className: 'inline-block mb-2' }, h(Badge, { tone: 'warning' }, t('needsReviewBadge'))),
     h('p', { className: 'font-bold mb-1' },
       farmer.hasLandRecord ? t('tenantReviewMsg', { name: farmer.name }) : t('noRecordReviewMsg', { name: farmer.name })
@@ -727,7 +786,7 @@ function RainWarning({ centre, date }) {
   if (probability === null || probability <= 40) return null;
 
   return h('div', { className: 'mb-4' },
-    h(Callout, { tone: 'warning', icon: 'fa-cloud-rain' },
+    h(Callout, { tone: 'warning' },
       h('p', { className: 'font-bold mb-1' }, t('weatherWarningTitle')),
       h('p', { className: 'text-sm m-0' }, t('weatherWarningBody', { pct: Math.round(probability) }))
     )
@@ -761,14 +820,12 @@ function QRTicket({ booking, farmer }) {
 
   return h('div', { className: 'rounded-2xl border-2 border-dashed border-kisan-ink/25 bg-kisan-paperRaised p-5 text-center' },
     h('div', { className: 'flex items-center justify-center gap-2 text-kisan-ink/60 text-xs font-bold uppercase tracking-wide mb-3' },
-      h('i', { className: 'fa-solid fa-ticket' }),
       t('ticketTitle')
     ),
     h('div', { className: 'qr-box flex justify-center mb-3', ref: boxRef }),
     h('div', { className: 'text-2xl font-extrabold tracking-wide mb-1' }, booking.token),
     h('div', { className: 'text-sm text-kisan-ink/60 mb-3' }, `${t('ticketFarmer')}: ${farmer.name}`),
     h('div', { className: 'border-t border-dashed border-kisan-ink/20 pt-3 text-xs text-kisan-ink/60 flex items-center justify-center gap-2' },
-      h('i', { className: 'fa-solid fa-qrcode' }),
       t('ticketScanNote')
     )
   );
@@ -835,7 +892,7 @@ function LiveQueueCard({ booking }) {
   if (!queue) {
     return h(Card, null,
       h('p', { className: 'm-0 text-sm text-kisan-ink/60 flex items-center gap-2' },
-        h('i', { className: 'fa-solid fa-circle-notch fa-spin' }), t('loadingQueue')
+        h('span', { className: 'spinner' }), t('loadingQueue')
       )
     );
   }
@@ -850,7 +907,6 @@ function LiveQueueCard({ booking }) {
 
   return h(Callout, {
     tone: isNowServing || alreadyCalled ? 'success' : 'warning',
-    icon: isNowServing ? 'fa-bell' : alreadyCalled ? 'fa-circle-check' : 'fa-people-line',
   },
     h('p', { className: 'font-bold mb-1' },
       isNowServing ? t('nowServingYou') : mine ? t('queuePosition', { n: mine.position }) : t('queueCalled')
@@ -1029,9 +1085,9 @@ function BookScreen({ farmer, onSwitchTab }) {
 
   if (status === 'QUEUED') {
     return h('div', null,
-      h(Callout, { tone: 'warning', icon: 'fa-cloud-arrow-up' },
+      h(Callout, { tone: 'warning' },
         h('div', { className: 'flex justify-center mb-3' }, h(Badge, { tone: 'warning' },
-          h('i', { className: 'fa-solid fa-clock' }), t('queuedBadge')
+          t('queuedBadge')
         )),
         h('p', { className: 'font-bold text-center mb-1' }, t('queuedBookingTitle')),
         h('p', { className: 'text-sm text-center m-0' }, t('queuedBookingBody')),
@@ -1044,7 +1100,7 @@ function BookScreen({ farmer, onSwitchTab }) {
         )
       ),
       h('div', { className: 'flex gap-2.5 mt-4' },
-        h(PrimaryButton, { onClick: () => onSwitchTab('status'), icon: 'fa-route' }, t('seeStatusBtn')),
+        h(PrimaryButton, { onClick: () => onSwitchTab('status') }, t('seeStatusBtn')),
         h(SecondaryButton, { onClick: reset }, t('bookAnotherBtn'))
       )
     );
@@ -1055,7 +1111,7 @@ function BookScreen({ farmer, onSwitchTab }) {
     return h('div', null,
       h(Callout, { tone: 'success' },
         h('div', { className: 'flex justify-center mb-3' }, h(Badge, { tone: 'success' },
-          h('i', { className: 'fa-solid fa-circle-check' }), t('bookedBadge')
+          t('bookedBadge')
         )),
         h(QRTicket, { booking: b, farmer }),
         h('div', { className: 'mt-3' },
@@ -1066,11 +1122,11 @@ function BookScreen({ farmer, onSwitchTab }) {
           )
         ),
         h('p', { className: 'text-sm text-kisan-ink/60 flex items-center gap-2 mt-3' },
-          h('i', { className: 'fa-solid fa-circle-info' }), t('bringTokenNote')
+          t('bringTokenNote')
         )
       ),
       h('div', { className: 'flex gap-2.5 mt-4' },
-        h(PrimaryButton, { onClick: () => onSwitchTab('status'), icon: 'fa-route' }, t('seeStatusBtn')),
+        h(PrimaryButton, { onClick: () => onSwitchTab('status') }, t('seeStatusBtn')),
         h(SecondaryButton, { onClick: reset }, t('bookAnotherBtn'))
       )
     );
@@ -1078,7 +1134,7 @@ function BookScreen({ farmer, onSwitchTab }) {
 
   if (status === 'NEEDS_OFFICER_REVIEW') {
     return h('div', null,
-      h(Callout, { tone: 'warning', icon: 'fa-user-clock' },
+      h(Callout, { tone: 'warning' },
         h('div', { className: 'inline-block mb-2' }, h(Badge, { tone: 'warning' }, t('needsReviewBadge'))),
         h('p', { className: 'font-bold mb-1' }, result.body.message),
         result.body.landEstimateQuintals !== undefined && h('p', { className: 'text-sm text-kisan-ink/60 mb-1' },
@@ -1094,7 +1150,7 @@ function BookScreen({ farmer, onSwitchTab }) {
     const alt = result.body.alternatives || {};
     return h('div', null,
       h('div', { className: 'mb-4' },
-        h(Callout, { tone: 'warning', icon: 'fa-triangle-exclamation' },
+        h(Callout, { tone: 'warning' },
           h('p', { className: 'font-bold mb-1' }, t('dontLoadTitle')),
           h('p', { className: 'text-sm m-0' }, t('noCapacityNote'))
         )
@@ -1118,11 +1174,11 @@ function BookScreen({ farmer, onSwitchTab }) {
 
   if (status === 'ALREADY_BOOKED') {
     return h('div', null,
-      h(Callout, { tone: 'danger', icon: 'fa-calendar-xmark' },
+      h(Callout, { tone: 'danger' },
         h('p', { className: 'font-bold m-0' }, t('alreadyBookedMessage'))
       ),
       h('div', { className: 'mt-3' },
-        h(PrimaryButton, { onClick: () => onSwitchTab('status'), icon: 'fa-route' }, t('seeStatusBtn'))
+        h(PrimaryButton, { onClick: () => onSwitchTab('status') }, t('seeStatusBtn'))
       )
     );
   }
@@ -1134,16 +1190,16 @@ function BookScreen({ farmer, onSwitchTab }) {
   if (status) {
     const message = result.body.message || (result.body.errors || []).join(', ') || t('somethingWrong');
     return h('div', null,
-      h(Callout, { tone: 'danger', icon: 'fa-circle-exclamation' }, h('p', { className: 'font-bold m-0' }, message)),
+      h(Callout, { tone: 'danger' }, h('p', { className: 'font-bold m-0' }, message)),
       h('div', { className: 'mt-3' }, h(SecondaryButton, { onClick: reset }, t('tryAgainBtn')))
     );
   }
 
   return h('div', null,
-    networkError && h('div', { className: 'mb-4' }, h(Callout, { tone: 'danger', icon: 'fa-circle-exclamation' }, networkError)),
+    networkError && h('div', { className: 'mb-4' }, h(Callout, { tone: 'danger' }, networkError)),
     h(Card, { className: '!p-4' },
       h('div', { className: 'mb-4' },
-        h(FieldLabel, { icon: 'fa-weight-hanging' }, t('fieldQuantity')),
+        h(FieldLabel, null, t('fieldQuantity')),
         h('input', {
           type: 'number', min: 0, max: KisanValidation.ABSOLUTE_QUANTITY_CAP_QUINTALS, step: '0.1', value: quintals, placeholder: t('quantityPlaceholder'),
           className: inputClass + (quintalsError || serverErrorsByField.quintals.length ? ' border-kisan-red' : ''), onChange: (e) => setQuintals(e.target.value),
@@ -1152,15 +1208,15 @@ function BookScreen({ farmer, onSwitchTab }) {
         !quintalsError && serverErrorsByField.quintals.map((e, i) => h('p', { key: i, className: 'field-error' }, e))
       ),
       h('div', { className: 'mb-4' },
-        h(FieldLabel, { icon: 'fa-warehouse' }, t('fieldCentre')),
+        h(FieldLabel, null, t('fieldCentre')),
         dateCentres === null
           ? h('p', { className: 'text-sm text-kisan-ink/60 flex items-center gap-2 py-2' },
-              h('i', { className: 'fa-solid fa-circle-notch fa-spin' }), t('loadingEllipsis')
+              h('span', { className: 'spinner' }), t('loadingEllipsis')
             )
           : dateCentres.length === 0
-          ? h('div', { className: 'empty-state' }, h('span', { className: 'ic' }, '🏚️'), t('noCentresNote'))
+          ? h('div', { className: 'empty-state' }, t('noCentresNote'))
           : availableCentres.length === 0
-          ? h('div', { className: 'empty-state' }, h('span', { className: 'ic' }, '🗓️'), t('noCentresCapacityNote'))
+          ? h('div', { className: 'empty-state' }, t('noCentresCapacityNote'))
           : h('select', {
               value: centreId, className: inputClass + (serverErrorsByField.centre.length ? ' border-kisan-red' : ''),
               onChange: (e) => setCentreId(e.target.value),
@@ -1170,7 +1226,7 @@ function BookScreen({ farmer, onSwitchTab }) {
         serverErrorsByField.centre.map((e, i) => h('p', { key: i, className: 'field-error' }, e))
       ),
       h('div', null,
-        h(FieldLabel, { icon: 'fa-calendar-day' }, t('fieldDate')),
+        h(FieldLabel, null, t('fieldDate')),
         h('input', {
           type: 'date', value: date, min: today(), max: maxBookingDate(),
           className: inputClass + (dateError || serverErrorsByField.date.length ? ' border-kisan-red' : ''), onChange: (e) => setDate(e.target.value),
@@ -1181,13 +1237,13 @@ function BookScreen({ farmer, onSwitchTab }) {
       )
     ),
     serverErrorsByField.general.length > 0 && h('div', { className: 'mt-3' },
-      h(Callout, { tone: 'danger', icon: 'fa-circle-exclamation' },
+      h(Callout, { tone: 'danger' },
         serverErrorsByField.general.map((e, i) => h('p', { key: i, className: 'm-0' }, e))
       )
     ),
     h(RainWarning, { centre: selectedCentre, date }),
     h(PrimaryButton, {
-      onClick: () => submit(), disabled: submitting || !centreId || !quintals || !!quintalsError || !!dateError, icon: 'fa-check-circle',
+      onClick: () => submit(), disabled: submitting || !centreId || !quintals || !!quintalsError || !!dateError,
     }, submitting ? t('bookingEllipsis') : t('bookButton'))
   );
 }
@@ -1205,13 +1261,13 @@ function MoistureCard({ moisture }) {
   if (!moisture) {
     return h(Card, null,
       h('p', { className: 'm-0 text-sm text-kisan-ink/60 flex items-center gap-2' },
-        h('i', { className: 'fa-solid fa-hourglass-half' }), t('awaitingMoisture')
+        t('awaitingMoisture')
       )
     );
   }
   return h(Card, null,
     h('div', { className: 'flex justify-between items-center mb-2' },
-      h('span', { className: 'font-bold flex items-center gap-2' }, h('i', { className: 'fa-solid fa-droplet text-kisan-ink/40' }), t('moistureTestLabel')),
+      h('span', { className: 'font-bold flex items-center gap-2' }, t('moistureTestLabel')),
       h(Badge, { tone: moisture.verdict === 'accept' ? 'success' : moisture.verdict === 'cut' ? 'warning' : 'danger' },
         t(VERDICT_KEY[moisture.verdict] || moisture.verdict)
       )
@@ -1230,7 +1286,7 @@ function Timeline({ stages }) {
         className: `w-8 h-8 rounded-full flex-none mt-0.5 flex items-center justify-center text-sm ${
           s.done ? 'bg-kisan-green text-white' : 'bg-kisan-ink/5 text-kisan-ink/30 border border-kisan-line'
         }`,
-      }, h('i', { className: `fa-solid ${STAGE_ICON[s.key] || 'fa-circle'}` })),
+      }, h(Icon, { size: 19 }, STAGE_ICONS[s.key])),
       h('div', null,
         h('div', { className: 'font-bold' }, t(STAGE_LABEL_KEY[s.key]) || s.label),
         s.done
@@ -1262,7 +1318,6 @@ function BookingStatusCard({ entry, farmer }) {
   return h('div', { className: 'mb-6 last:mb-0' },
     h('div', { className: 'flex items-center justify-between gap-2 mb-2' },
       h('div', { className: 'font-extrabold flex items-center gap-2' },
-        h('i', { className: 'fa-solid fa-calendar-day text-kisan-ink/40' }),
         formatDate(booking.serviceDate)
       ),
       isToday && h(Badge, { tone: 'success' }, t('todayBadge'))
@@ -1276,9 +1331,9 @@ function BookingStatusCard({ entry, farmer }) {
       }),
       h(Row, { k: t('rowQuantity'), v: `${booking.declaredQuantityQuintals} ${t('unitQuintal')}` })
     ),
-    h(SectionHeading, { icon: 'fa-route' }, t('sectionProgress')),
+    h(SectionHeading, null, t('sectionProgress')),
     h(Card, null, h(Timeline, { stages })),
-    h(SectionHeading, { icon: 'fa-droplet' }, t('sectionMoisture')),
+    h(SectionHeading, null, t('sectionMoisture')),
     h(MoistureCard, { moisture })
   );
 }
@@ -1303,14 +1358,14 @@ function StatusScreen({ farmer, onSwitchTab }) {
 
   if (state.loading) {
     return h('p', { className: 'text-sm text-kisan-ink/60 py-2 flex items-center gap-2' },
-      h('i', { className: 'fa-solid fa-circle-notch fa-spin' }), t('loadingStatus')
+      h('span', { className: 'spinner' }), t('loadingStatus')
     );
   }
-  if (state.error) return h(Callout, { tone: 'danger', icon: 'fa-circle-exclamation' }, state.error);
+  if (state.error) return h(Callout, { tone: 'danger' }, state.error);
   if (state.notFound) {
     return h('div', null,
       h('p', { className: 'text-center text-sm text-kisan-ink/60 py-5' }, t('noBookingsYet')),
-      h(PrimaryButton, { onClick: () => onSwitchTab('book'), icon: 'fa-calendar-check' }, t('bookSlotBtn'))
+      h(PrimaryButton, { onClick: () => onSwitchTab('book') }, t('bookSlotBtn'))
     );
   }
 
@@ -1345,10 +1400,10 @@ function JFormScreen({ farmer, onSwitchTab }) {
 
   if (state.loading) {
     return h('p', { className: 'text-sm text-kisan-ink/60 py-2 flex items-center gap-2' },
-      h('i', { className: 'fa-solid fa-circle-notch fa-spin' }), t('loadingBill')
+      h('span', { className: 'spinner' }), t('loadingBill')
     );
   }
-  if (state.error) return h(Callout, { tone: 'danger', icon: 'fa-circle-exclamation' }, state.error);
+  if (state.error) return h(Callout, { tone: 'danger' }, state.error);
   if (state.notFound) {
     return h('div', null,
       h('p', { className: 'text-center text-sm text-kisan-ink/60 py-5' }, t('noBillYet')),
@@ -1382,7 +1437,7 @@ function JFormCard({ j }) {
       h(Row, { k: t('rowMspRate'), v: `${formatINR(j.mspRate)}/${t('unitQuintal')}` }),
       h(Row, { k: t('rowGrossValue'), v: formatINR(j.grossAmount) })
     ),
-    h(SectionHeading, { icon: 'fa-file-invoice-dollar' }, t('sectionDeductions')),
+    h(SectionHeading, null, t('sectionDeductions')),
     h(Card, null,
       j.deductions.length === 0
         ? h('p', { className: 'm-0 text-sm text-kisan-ink/60' }, t('noDeductions'))
@@ -1500,7 +1555,7 @@ function OutboxBanner() {
   if (count === 0 && online) return null;
 
   return h('div', { className: 'mb-4' },
-    h(Callout, { tone: online ? 'warning' : 'danger', icon: online ? 'fa-cloud-arrow-up' : 'fa-wifi' },
+    h(Callout, { tone: online ? 'warning' : 'danger' },
       h('p', { className: 'm-0 text-sm font-bold' },
         !online && t('offlineNote'),
         count > 0 ? ` ${online ? t('syncingNote', { n: count }) : t('pendingSyncNote', { n: count })}` : ''
@@ -1547,15 +1602,15 @@ function AppBody() {
   }, [session.farmerId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const tabs = [
-    { key: 'book', label: t('tabBook'), icon: 'fa-calendar-check' },
-    { key: 'status', label: t('tabStatus'), icon: 'fa-route' },
-    { key: 'jform', label: t('tabJForm'), icon: 'fa-file-invoice' },
+    { key: 'book', label: t('tabBook') },
+    { key: 'status', label: t('tabStatus') },
+    { key: 'jform', label: t('tabJForm') },
   ];
 
   if (session.loading) {
     return h('div', { className: 'max-w-md mx-auto px-4 py-8' },
       h('p', { className: 'text-sm text-kisan-ink/60 flex items-center gap-2' },
-        h('i', { className: 'fa-solid fa-circle-notch fa-spin' }), t('checkingSession')
+        h('span', { className: 'spinner' }), t('checkingSession')
       )
     );
   }
@@ -1570,16 +1625,16 @@ function AppBody() {
         type: 'button', onClick: logout,
         className: 'ml-auto flex items-center gap-1.5 bg-kisan-ink/5 px-3 py-1.5 rounded-full',
       },
-        h('i', { className: 'fa-solid fa-right-from-bracket' }), t('logoutBtn')
+        h(Icon, { size: 18 }, LOG_OUT_ICON), t('logoutBtn')
       )
     ),
 
     h(OutboxBanner),
 
-    error && h('div', { className: 'mb-4' }, h(Callout, { tone: 'danger', icon: 'fa-circle-exclamation' }, error)),
+    error && h('div', { className: 'mb-4' }, h(Callout, { tone: 'danger' }, error)),
 
     farmerLoading && h('p', { className: 'text-sm text-kisan-ink/60 py-2 flex items-center gap-2' },
-      h('i', { className: 'fa-solid fa-circle-notch fa-spin' }), t('loadingYourDetails')
+      h('span', { className: 'spinner' }), t('loadingYourDetails')
     ),
 
     farmer && farmer.needsOfficerReview && h(OfficerReviewCard, { farmer }),
@@ -1595,7 +1650,7 @@ function AppBody() {
             tab === tb.key ? 'bg-kisan-ink text-white border-kisan-ink' : 'bg-kisan-paperRaised text-kisan-ink border-kisan-line'
           }`,
         },
-          h('i', { className: `fa-solid ${tb.icon}` }),
+          h(Icon, { size: 18 }, TAB_ICONS[tb.key]),
           tb.label
         ))
       ),
@@ -1622,7 +1677,6 @@ function App() {
     h('header', { className: 'sticky top-0 z-10 bg-kisan-ink text-white px-4 py-3 border-b border-white/10' },
       h('div', { className: 'max-w-md mx-auto flex items-center justify-between gap-3' },
         h('div', { className: 'flex items-center gap-2.5 min-w-0' },
-          h('i', { className: 'fa-solid fa-wheat-awn text-white/80 text-xl flex-none' }),
           h('div', { className: 'min-w-0' },
             h('h1', { className: 'text-lg font-extrabold leading-tight truncate' }, translate(lang, 'appTitle')),
             h('p', { className: 'text-xs text-white/70 leading-tight truncate' }, translate(lang, 'appSubtitle'))

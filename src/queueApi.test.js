@@ -20,14 +20,14 @@ function setup({ now } = {}) {
 
 describe('POST /api/lots/:id/scan', () => {
   test('validates the token, checks the lot in, and joins the queue', async () => {
-    const { app, pool } = setup();
+    const { app, pool } = setup({ now: DATE });
     const centreId = await insertCentre(pool);
     const centreDayId = await insertCentreDay(pool, { centreId, serviceDate: DATE });
     const farmerId = await insertFarmerWithLand(pool, {});
-    const bookingId = await insertBooking(pool, { centreDayId, farmerId, token: 'MDK-01-20260916-001', status: 'booked' });
+    const bookingId = await insertBooking(pool, { centreDayId, farmerId, token: 'MDK-APMC-02-20260916-001', status: 'booked' });
 
     const officer = centreOfficerAgent(app, centreId);
-    const res = await officer.post(`/api/lots/${bookingId}/scan`).send({ token: 'MDK-01-20260916-001' });
+    const res = await officer.post(`/api/lots/${bookingId}/scan`).send({ token: 'MDK-APMC-02-20260916-001' });
 
     expect(res.status).toBe(200);
     expect(res.body.status).toBe('OK');
@@ -39,17 +39,17 @@ describe('POST /api/lots/:id/scan', () => {
   });
 
   test('replaying the same Idempotency-Key returns the original check-in, not the usual 409 for an already-scanned lot', async () => {
-    const { app, pool } = setup();
+    const { app, pool } = setup({ now: DATE });
     const centreId = await insertCentre(pool);
     const centreDayId = await insertCentreDay(pool, { centreId, serviceDate: DATE });
     const farmerId = await insertFarmerWithLand(pool, {});
-    const bookingId = await insertBooking(pool, { centreDayId, farmerId, token: 'MDK-01-20260916-001', status: 'booked' });
+    const bookingId = await insertBooking(pool, { centreDayId, farmerId, token: 'MDK-APMC-02-20260916-001', status: 'booked' });
 
     const officer = centreOfficerAgent(app, centreId);
     const first = await officer
       .post(`/api/lots/${bookingId}/scan`)
       .set('Idempotency-Key', 'scan-key-1')
-      .send({ token: 'MDK-01-20260916-001' });
+      .send({ token: 'MDK-APMC-02-20260916-001' });
     expect(first.status).toBe(200);
 
     // Simulates the gate queue's offline outbox (public/offline-queue.js,
@@ -59,7 +59,7 @@ describe('POST /api/lots/:id/scan', () => {
     const replay = await officer
       .post(`/api/lots/${bookingId}/scan`)
       .set('Idempotency-Key', 'scan-key-1')
-      .send({ token: 'MDK-01-20260916-001' });
+      .send({ token: 'MDK-APMC-02-20260916-001' });
     expect(replay.status).toBe(200);
     expect(replay.body).toEqual(first.body);
     expect(replay.headers['idempotency-replayed']).toBe('true');
@@ -89,14 +89,14 @@ describe('POST /api/lots/:id/scan', () => {
   });
 
   test('409s a lot that is not in the booked state (e.g. already scanned)', async () => {
-    const { app, pool } = setup();
+    const { app, pool } = setup({ now: DATE });
     const centreId = await insertCentre(pool);
     const centreDayId = await insertCentreDay(pool, { centreId, serviceDate: DATE });
     const farmerId = await insertFarmerWithLand(pool, {});
-    const bookingId = await insertBooking(pool, { centreDayId, farmerId, token: 'TOK-1', status: 'checked_in' });
+    const bookingId = await insertBooking(pool, { centreDayId, farmerId, token: 'MDK-APMC-02-20260916-001', status: 'checked_in' });
 
     const officer = centreOfficerAgent(app, centreId);
-    const res = await officer.post(`/api/lots/${bookingId}/scan`).send({ token: 'TOK-1' });
+    const res = await officer.post(`/api/lots/${bookingId}/scan`).send({ token: 'MDK-APMC-02-20260916-001' });
 
     expect(res.status).toBe(409);
   });
@@ -119,13 +119,13 @@ describe('POST /api/lots/:id/scan', () => {
 describe('GET /api/lots/by-token/:token', () => {
   test('resolves a token to its booking for the manual-entry fallback', async () => {
     const { app, pool } = setup();
-    const centreId = await insertCentre(pool, { name: 'Medak APMC Mandi', code: 'MDK-01' });
+    const centreId = await insertCentre(pool, { name: 'Medak APMC Mandi', code: 'MDK-APMC-02' });
     const centreDayId = await insertCentreDay(pool, { centreId, serviceDate: DATE });
     const farmerId = await insertFarmerWithLand(pool, { farmerName: 'Ravi Kumar' });
-    const bookingId = await insertBooking(pool, { centreDayId, farmerId, token: 'MDK-01-20260916-001', status: 'booked' });
+    const bookingId = await insertBooking(pool, { centreDayId, farmerId, token: 'MDK-APMC-02-20260916-001', status: 'booked' });
 
     const officer = centreOfficerAgent(app, centreId);
-    const res = await officer.get('/api/lots/by-token/MDK-01-20260916-001');
+    const res = await officer.get('/api/lots/by-token/MDK-APMC-02-20260916-001');
 
     expect(res.status).toBe(200);
     expect(res.body.bookingId).toBe(bookingId);

@@ -13,7 +13,7 @@
   .sub { color: var(--ink-60); margin-bottom: var(--space-5); font-size: 0.9rem; }
   fieldset { border: 1px solid var(--line); border-radius: var(--radius); padding: var(--space-4); margin: 0 0 var(--space-4); }
   legend { padding: 0 var(--space-2); font-weight: 700; font-size: 0.95rem; }
-  .link-btn { background: none; border: none; color: var(--green); font-weight: 600; cursor: pointer; padding: 0; text-decoration: underline; min-height: auto; }
+  .link-btn { background: none; border: none; color: var(--green); font-weight: 600; cursor: pointer; padding: 0; text-decoration: underline; min-height: auto; display: inline-flex; align-items: center; gap: 0.3em; }
   #reader { border-radius: var(--radius); overflow: hidden; border: 1px solid var(--line); }
   #reader:empty { display: none; }
   .scan-actions { display: flex; gap: var(--space-3); flex-wrap: wrap; margin-bottom: var(--space-4); }
@@ -41,6 +41,34 @@ if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => { navigator.serviceWorker.register('/sw.js').catch(() => {}); });
 }
 const h = React.createElement;
+
+// One reusable stroke-icon primitive -- 24x24, currentColor throughout,
+// so it inherits whatever text colour its button already has.
+function Icon({ size = 18, children }) {
+  return h('svg', {
+    width: size, height: size, viewBox: '0 0 24 24', fill: 'none',
+    stroke: 'currentColor', strokeWidth: '2', strokeLinecap: 'round', strokeLinejoin: 'round',
+    'aria-hidden': 'true',
+  }, children);
+}
+
+const GATE_SCAN_ICON = [
+  h('path', { key: 0, d: 'M3 7V5a2 2 0 0 1 2-2h4' }),
+  h('path', { key: 1, d: 'M3 17v2a2 2 0 0 0 2 2h4' }),
+  h('path', { key: 2, d: 'M21 7V5a2 2 0 0 0-2-2h-4' }),
+  h('path', { key: 3, d: 'M21 17v2a2 2 0 0 1-2 2h-4' }),
+  h('rect', { key: 4, x: 7, y: 7, width: 4, height: 4 }),
+  h('rect', { key: 5, x: 7, y: 13, width: 4, height: 4 }),
+  h('rect', { key: 6, x: 13, y: 7, width: 4, height: 4 }),
+  h('path', { key: 7, d: 'M13 13h2v2' }),
+  h('path', { key: 8, d: 'M17 17h.01' }),
+];
+
+const LOG_OUT_ICON = [
+  h('path', { key: 0, d: 'M14 21h4a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2h-4' }),
+  h('path', { key: 1, d: 'M9 16l-4-4 4-4' }),
+  h('path', { key: 2, d: 'M5 12h11' }),
+];
 
 function formatLocalDate(d) {
   const y = d.getFullYear();
@@ -238,7 +266,7 @@ function ScanPanel({ onScanned }) {
 
     h('div', { className: 'scan-actions' },
       !scanning
-        ? h('button', { className: 'btn btn-primary', onClick: startScanning }, '📷 Start camera scan')
+        ? h('button', { className: 'btn btn-primary', onClick: startScanning }, h(Icon, { size: 18 }, GATE_SCAN_ICON), 'Start camera scan')
         : h('button', { className: 'btn btn-secondary', onClick: stopScanning }, 'Stop camera')
     ),
     h('div', { id: 'reader', style: { marginBottom: scanning ? 'var(--space-4)' : 0 } }),
@@ -248,7 +276,7 @@ function ScanPanel({ onScanned }) {
       h('div', { className: 'manual-row' },
         h('div', { className: 'field' },
           h('input', {
-            type: 'text', placeholder: 'e.g. MDK-01-20260916-001', value: manualToken,
+            type: 'text', placeholder: 'e.g. MDK-APMC-02-20260917-002', value: manualToken,
             onChange: (e) => setManualToken(e.target.value),
             onKeyDown: (e) => { if (e.key === 'Enter') submitManual(); },
           })
@@ -264,7 +292,7 @@ function ScanPanel({ onScanned }) {
 
 function NowServing({ lot, onServe }) {
   if (!lot) {
-    return h('div', { className: 'empty-state' }, h('span', { className: 'ic' }, '🚪'), 'Nobody in the queue yet.');
+    return h('div', { className: 'empty-state' }, 'Nobody in the queue yet.');
   }
   return h('div', { className: 'now-serving' },
     h('div', null,
@@ -401,7 +429,7 @@ function App() {
     h('p', { style: { fontSize: '0.8rem', color: 'var(--ink-60)', marginTop: 0, marginBottom: 'var(--space-4)' } },
       h('a', { href: '/declaration.html' }, "← Tonight's Declaration"), ' · ',
       `Logged in as ${session.name} (${session.role.replace('_', ' ')})`, ' · ',
-      h('button', { className: 'link-btn', onClick: logout }, 'Log out')
+      h('button', { className: 'link-btn', onClick: logout }, h(Icon, { size: 18 }, LOG_OUT_ICON), 'Log out')
     ),
 
     h(OutboxBanner),

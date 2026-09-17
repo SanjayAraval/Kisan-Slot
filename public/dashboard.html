@@ -11,7 +11,12 @@
   h1 { font-size: 1.35rem; }
   h2 { font-size: 1.05rem; margin: 0 0 var(--space-3); }
   .sub { color: var(--ink-60); margin: 0 0 var(--space-4); font-size: 0.9rem; }
-  .nav { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2) var(--space-3); font-size: 0.85rem; margin-bottom: var(--space-5); }
+  .nav {
+    display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2) var(--space-3);
+    font-size: 0.85rem; margin: 0 0 var(--space-5);
+    position: sticky; top: 0; z-index: 30;
+    background: var(--paper); padding: var(--space-3) 0;
+  }
   .nav a { color: var(--green); font-weight: 600; }
   .date-row { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-3); margin-bottom: var(--space-6); }
   .date-row label { font-size: 0.85rem; color: var(--ink-60); margin-bottom: 0; }
@@ -27,6 +32,9 @@
   tr.overbooked td:first-child { border-left: 3px solid var(--red); }
   .cover-null { color: var(--ink-30); }
   .cover-low { color: var(--red); font-weight: 700; }
+  .risk-cell { font-weight: 700; }
+  .risk-overbooked { color: var(--red); }
+  .risk-low-gunny { color: var(--amber-ink); }
   .alert-card { border: 1px solid var(--amber-border); background: var(--amber-bg); border-radius: var(--radius); padding: var(--space-4); margin-bottom: var(--space-3); }
   .alert-card .head { display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
   .alert-card .name { font-weight: 600; }
@@ -38,7 +46,7 @@
   .bar-bg { background: var(--ink-10); border-radius: 4px; height: 0.5rem; width: 100%; overflow: hidden; }
   .bar-fill { background: var(--red); height: 100%; }
   .bar-fill.ok { background: var(--green); }
-  .link-btn { background: none; border: none; color: var(--green); font-weight: 600; cursor: pointer; padding: 0; text-decoration: underline; font-size: inherit; min-height: auto; }
+  .link-btn { background: none; border: none; color: var(--green); font-weight: 600; cursor: pointer; padding: 0; text-decoration: underline; font-size: inherit; min-height: auto; display: inline-flex; align-items: center; gap: 0.3em; }
 </style>
 </head>
 <body>
@@ -52,6 +60,22 @@ if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => { navigator.serviceWorker.register('/sw.js').catch(() => {}); });
 }
 const h = React.createElement;
+
+// One reusable stroke-icon primitive -- 24x24, currentColor throughout,
+// so it inherits whatever text colour its button already has.
+function Icon({ size = 18, children }) {
+  return h('svg', {
+    width: size, height: size, viewBox: '0 0 24 24', fill: 'none',
+    stroke: 'currentColor', strokeWidth: '2', strokeLinecap: 'round', strokeLinejoin: 'round',
+    'aria-hidden': 'true',
+  }, children);
+}
+
+const LOG_OUT_ICON = [
+  h('path', { key: 0, d: 'M14 21h4a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2h-4' }),
+  h('path', { key: 1, d: 'M9 16l-4-4 4-4' }),
+  h('path', { key: 2, d: 'M5 12h11' }),
+];
 
 const CENTRE_TYPE_LABELS = { apmc_mandi: 'APMC Mandi', pacs: 'PACS', ikp: 'IKP' };
 const WEIGHING_MODE_LABELS = { weighbridge: 'Weighbridge', platform: 'Platform' };
@@ -122,9 +146,84 @@ function StatCard({ value, label, risk }) {
   );
 }
 
+// Days of cover always keeps exactly one decimal place and is never
+// rounded to a whole number -- unlike bag counts/burn rate below, this
+// is the number that decides the at-risk threshold (< 1.5), so losing
+// precision here would misrepresent how close a centre actually is.
+// Pluralised against the real number, not the formatted string, so an
+// exact 1 reads "1.0 day" rather than "1.0 days".
+function formatDaysOfCover(daysOfCover) {
+  return `${daysOfCover.toFixed(1)} ${daysOfCover === 1 ? 'day' : 'days'}`;
+}
+
 function coverCell(daysOfCover) {
   if (daysOfCover === null) return h('span', { className: 'cover-null' }, 'no data');
-  return h('span', { className: daysOfCover < 1.5 ? 'cover-low' : '' }, `${daysOfCover}d`);
+  return h('span', { className: daysOfCover < 1.5 ? 'cover-low' : '' }, formatDaysOfCover(daysOfCover));
+}
+
+// Indian digit grouping (last 3 digits, then pairs) -- e.g.
+// "1234567" -> "12,34,567". Built by hand rather than via
+// Number.prototype.toLocaleString('en-IN', ...): a runtime without full
+// ICU data for that locale can silently fall back to a different
+// default locale instead of throwing, which is how a thousands
+// separator and a forced one-decimal fraction previously compounded
+// into something like "1.000.0" instead of "1,000.0". This has no
+// locale dependency, so it can't do that.
+function groupIndianDigits(digits) {
+  if (digits.length <= 3) return digits;
+  const last3 = digits.slice(-3);
+  const rest = digits.slice(0, -3).replace(/\B(?=(\d{2})+(?!\d))/g, ',');
+  return `${rest},${last3}`;
+}
+
+// Display-only rounding -- never mutates the underlying values used for
+// sorting/comparisons, just what's rendered. Bag counts and burn rate
+// round to whole numbers with thousands separators; tonnages keep one
+// decimal place, matching the precision the capacity engine reasons in.
+function formatCount(n) {
+  if (n === null || n === undefined) return n;
+  return groupIndianDigits(String(Math.round(n)));
+}
+
+function formatTonnes(n) {
+  if (n === null || n === undefined) return n;
+  const [intPart, decPart] = n.toFixed(1).split('.');
+  return `${groupIndianDigits(intPart)}.${decPart}`;
+}
+
+// Strictly over capacity, not merely full -- see bookedCell/riskCell,
+// which both need to tell "no bookable room left, exactly" apart from
+// "somehow over it" (e.g. a walk-in admitted after the atomic claim).
+function isOverCapacity(c) {
+  return c.bookedSlots > c.bookableCapacity;
+}
+
+function bookedCell(c) {
+  if (isOverCapacity(c)) return `${c.bookedSlots} / ${c.bookedSlots - c.bookableCapacity} over`;
+  if (c.bookedSlots === c.bookableCapacity) return `${c.bookedSlots} (full)`;
+  return `${c.bookedSlots}`;
+}
+
+function riskCell(c) {
+  if (isOverCapacity(c)) return h('span', { className: 'risk-cell risk-overbooked' }, 'Overbooked');
+  if (c.daysOfCover !== null && c.daysOfCover < 1.5) return h('span', { className: 'risk-cell risk-low-gunny' }, 'Low gunny');
+  return null;
+}
+
+// Overbooked first, then ascending gunny cover (least cover = most
+// urgent), then everyone else -- mirrors dashboardService's own
+// byUrgency ordering server-side, but recomputed here against the
+// strict over-capacity definition the RISK/BOOKED columns use, and kept
+// independent of API ordering since this is a display-layer concern.
+function sortByRisk(centres) {
+  return centres.slice().sort((a, b) => {
+    const aOver = isOverCapacity(a);
+    const bOver = isOverCapacity(b);
+    if (aOver !== bOver) return aOver ? -1 : 1;
+    const aCover = a.daysOfCover === null ? Infinity : a.daysOfCover;
+    const bCover = b.daysOfCover === null ? Infinity : b.daysOfCover;
+    return aCover - bCover;
+  });
 }
 
 // Every tied constraint is still in c.bindingConstraints (and the
@@ -140,20 +239,18 @@ function formatBindingLabel(keys) {
 
 function CentreGrid({ centres }) {
   if (centres.length === 0) {
-    return h('div', { className: 'empty-state' },
-      h('span', { className: 'ic' }, '📋'),
-      'No centres operating on this date.'
-    );
+    return h('div', { className: 'empty-state' }, 'No centres operating on this date.');
   }
+  const sorted = sortByRisk(centres);
   return h('div', { className: 'table-scroll' },
     h('table', null,
       h('thead', null, h('tr', null,
         h('th', null, 'Centre'), h('th', null, 'Type'), h('th', null, 'Weighing'),
-        h('th', null, 'Capacity (lots)'), h('th', null, 'Booked'),
+        h('th', null, 'Capacity (lots)'), h('th', null, 'Booked'), h('th', null, 'Risk'),
         h('th', null, 'Binding constraint'), h('th', null, 'Gunny cover')
       )),
       h('tbody', null,
-        centres.map((c) => {
+        sorted.map((c) => {
           const bindingLabel = formatBindingLabel(c.bindingConstraints || [c.bindingConstraint]);
           const rowClasses = [c.atRisk ? 'at-risk' : '', c.overbooked ? 'overbooked' : ''].filter(Boolean).join(' ');
           return h('tr', { key: c.centreId, className: rowClasses },
@@ -161,7 +258,8 @@ function CentreGrid({ centres }) {
             h('td', null, CENTRE_TYPE_LABELS[c.centreType] || c.centreType),
             h('td', null, WEIGHING_MODE_LABELS[c.weighingMode] || c.weighingMode),
             h('td', { className: 'num' }, c.bookableCapacity),
-            h('td', { className: 'num' }, `${c.bookedSlots}${c.overbooked ? ' (full)' : ''}`),
+            h('td', { className: 'num' }, bookedCell(c)),
+            h('td', null, riskCell(c)),
             h('td', null, bindingLabel),
             h('td', { className: 'num' }, coverCell(c.daysOfCover))
           );
@@ -227,7 +325,7 @@ function AlertCard({ alert, date, onReleased }) {
     h('div', { className: 'detail' },
       alert.daysOfCover === null
         ? 'No recent burn-rate data. '
-        : `${alert.daysOfCover} days of gunny bag cover (burn rate ${alert.burnRatePerDay}/day). `,
+        : `${formatDaysOfCover(alert.daysOfCover)} of gunny bag cover (burn rate ${formatCount(alert.burnRatePerDay)}/day). `,
       alert.overbooked ? `Booked ${alert.bookedSlots} of ${alert.bookableCapacity} bookable slots.` : ''
     ),
     h(ReleaseBagsForm, { centreId: alert.centreId, date, onReleased })
@@ -246,10 +344,7 @@ function AlertsPanel({ alerts, date, onReleased }) {
 
 function EvacuationBacklog({ rows }) {
   if (rows.length === 0) {
-    return h('div', { className: 'empty-state' },
-      h('span', { className: 'ic' }, '🚚'),
-      'No centres operating on this date.'
-    );
+    return h('div', { className: 'empty-state' }, 'No centres operating on this date.');
   }
   return h('div', { className: 'table-scroll' },
     h('table', null,
@@ -259,8 +354,8 @@ function EvacuationBacklog({ rows }) {
       h('tbody', null,
         rows.map((r) => h('tr', { key: r.centreId },
           h('td', null, `${r.name} (${r.code})`),
-          h('td', { className: 'num' }, r.undispatchedTonnes),
-          h('td', { className: 'num' }, r.yardCapacityTonnes),
+          h('td', { className: 'num' }, formatTonnes(r.undispatchedTonnes)),
+          h('td', { className: 'num' }, formatTonnes(r.yardCapacityTonnes)),
           h('td', null,
             h('div', { className: 'bar-bg' },
               h('div', {
@@ -326,7 +421,7 @@ function DeferralsTable({ deferrals }) {
 
 function NoShowTable({ rows }) {
   if (rows.length === 0) {
-    return h('div', { className: 'empty-state' }, h('span', { className: 'ic' }, '🚪'), "No no-shows to release for this run's date.");
+    return h('div', { className: 'empty-state' }, "No no-shows to release for this run's date.");
   }
   return h('div', { className: 'table-scroll' },
     h('table', null,
@@ -335,7 +430,7 @@ function NoShowTable({ rows }) {
         rows.map((r) => h('tr', { key: r.bookingId },
           h('td', null, r.farmerName || '(unknown)'),
           h('td', null, `${r.centreName || '—'}${r.centreCode ? ` (${r.centreCode})` : ''}`),
-          h('td', { className: 'num' }, r.bagsReleased)
+          h('td', { className: 'num' }, formatCount(r.bagsReleased))
         ))
       )
     )
@@ -344,7 +439,7 @@ function NoShowTable({ rows }) {
 
 function RecomputedCapacityTable({ rows }) {
   if (rows.length === 0) {
-    return h('div', { className: 'empty-state' }, h('span', { className: 'ic' }, '📋'), 'No centres had declared inputs to recompute.');
+    return h('div', { className: 'empty-state' }, 'No centres had declared inputs to recompute.');
   }
   return h('div', { className: 'table-scroll' },
     h('table', null,
@@ -455,9 +550,7 @@ function MessagesPanel({ messages, loading, error, onRefresh }) {
     ),
     error && h('div', { className: 'callout callout-danger', style: { marginBottom: 'var(--space-4)' } }, error),
     loading && !messages && h('div', { className: 'loading-row' }, h('span', { className: 'spinner' }), 'Loading messages…'),
-    messages && messages.length === 0 && h('div', { className: 'empty-state' },
-      h('span', { className: 'ic' }, '📭'), 'No messages queued yet.'
-    ),
+    messages && messages.length === 0 && h('div', { className: 'empty-state' }, 'No messages queued yet.'),
     messages && messages.length > 0 && h('div', { className: 'table-scroll' },
       h('table', null,
         h('thead', null, h('tr', null,
@@ -555,7 +648,7 @@ function App() {
       ' · ',
       h('span', { style: { color: 'var(--ink-60)' } }, `Logged in as ${session.name}`),
       ' · ',
-      h('button', { className: 'link-btn', onClick: logout }, 'Log out')
+      h('button', { className: 'link-btn', onClick: logout }, h(Icon, { size: 18 }, LOG_OUT_ICON), 'Log out')
     ),
 
     h('div', { className: 'date-row' },
@@ -576,7 +669,11 @@ function App() {
         h(StatCard, { value: summary.centresOperating, label: 'Centres operating' }),
         h(StatCard, { value: summary.totalDistrictCapacity, label: 'Total district capacity (lots/day)' }),
         h(StatCard, { value: summary.bookingsForDate, label: 'Bookings this date' }),
-        h(StatCard, { value: summary.centresAtRisk, label: 'Centres at risk', risk: summary.centresAtRisk > 0 })
+        h(StatCard, {
+          value: summary.centresAtRisk,
+          label: summary.centresAtRisk === 1 ? 'Centre at risk' : 'Centres at risk',
+          risk: summary.centresAtRisk > 0,
+        })
       )
     ),
 

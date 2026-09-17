@@ -75,7 +75,7 @@ describe('security headers (Helmet)', () => {
 
     expect(res.headers['x-content-type-options']).toBe('nosniff');
     expect(res.headers['x-frame-options']).toBe('SAMEORIGIN');
-    expect(res.headers['content-security-policy']).toContain("script-src 'self' 'unsafe-inline' https://unpkg.com https://cdnjs.cloudflare.com https://cdn.tailwindcss.com");
+    expect(res.headers['content-security-policy']).toContain("script-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.tailwindcss.com");
     expect(res.headers['content-security-policy']).toContain('https://api.open-meteo.com');
   });
 });

@@ -28,31 +28,30 @@ const SHELL_URLS = [
   '/offline-queue.js',
   '/manifest.json',
   '/icons/icon.svg',
+  '/vendor/qrcode.min.js',
 ];
 
-// Third-party scripts/styles the shell pages load from a CDN instead of
+// Third-party scripts the shell pages load from a CDN instead of
 // bundling (see CLAUDE.md's stack note -- no build step). Precached
 // best-effort with mode:'no-cors': these hosts are cross-origin and this
-// worker only ever needs to replay the bytes back to a <script>/<link>,
+// worker only ever needs to replay the bytes back to a <script> tag,
 // never read them, so an opaque response is fine. A miss here isn't
 // fatal either -- the runtime cache-on-fetch handler below still catches
-// it (and anything else these hosts serve that isn't listed here, e.g.
-// Font Awesome's actual @font-face webfont files, whose exact URLs
-// aren't enumerable ahead of time) the first time it's fetched online.
+// it the first time it's fetched online. Font Awesome and qrcodejs used
+// to be listed here too; both are now local (see SHELL_URLS' own
+// /vendor/qrcode.min.js and farmer.html's inline SVG tab icons) --
+// offline-first no longer depends on cdnjs.cloudflare.com at all.
 const CDN_SHELL_URLS = [
   'https://unpkg.com/react@18/umd/react.production.min.js',
   'https://unpkg.com/react-dom@18/umd/react-dom.production.min.js',
   'https://unpkg.com/html5-qrcode@2/html5-qrcode.min.js',
-  'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css',
-  'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js',
   'https://cdn.tailwindcss.com/',
 ];
 
 // Hosts it's safe to opportunistically cache-on-fetch -- lets requests
-// for CDN assets not listed above (webfonts referenced from Font
-// Awesome's CSS, chiefly) get cached the first time they're actually
-// used, without turning this into a general cross-origin cache.
-const RUNTIME_CACHE_HOSTS = ['cdnjs.cloudflare.com', 'unpkg.com', 'cdn.tailwindcss.com'];
+// for CDN assets not listed above get cached the first time they're
+// actually used, without turning this into a general cross-origin cache.
+const RUNTIME_CACHE_HOSTS = ['unpkg.com', 'cdn.tailwindcss.com'];
 
 // A real (default, CORS-mode) fetch, not forced no-cors -- required for
 // react.production.min.js/react-dom.production.min.js specifically,
@@ -60,11 +59,11 @@ const RUNTIME_CACHE_HOSTS = ['cdnjs.cloudflare.com', 'unpkg.com', 'cdn.tailwindc
 // (so React gets readable stack traces): a `<script crossorigin>` tag
 // refuses to execute an opaque no-cors response, even one cached for
 // the exact same URL, so serving one back from here would silently
-// break every page that loads React. cdnjs.cloudflare.com and
-// unpkg.com both send Access-Control-Allow-Origin: *, so this succeeds
-// for everything this app actually loads from them; falls back to
-// no-cors for the one host that doesn't (cdn.tailwindcss.com), which is
-// fine there since nothing loads it with `crossorigin` either.
+// break every page that loads React. unpkg.com sends
+// Access-Control-Allow-Origin: *, so this succeeds for everything this
+// app actually loads from it; falls back to no-cors for the one host
+// that doesn't (cdn.tailwindcss.com), which is fine there since nothing
+// loads it with `crossorigin` either.
 async function fetchCdnAsset(request) {
   try {
     return await fetch(request);
