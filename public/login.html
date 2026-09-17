@@ -190,7 +190,7 @@ function EmployeeLogin({ role }) {
     setError(null);
     setSubmitting(true);
     try {
-      const { httpStatus, body } = await postJson('/api/auth/login', { employeeId, password });
+      const { httpStatus, body } = await postJson('/api/auth/login', { employeeId, password, role });
       if (httpStatus !== 200) {
         setError(body.message || 'Login failed.');
         return;

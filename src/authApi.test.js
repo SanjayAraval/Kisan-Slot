@@ -126,6 +126,32 @@ describe('POST /api/auth/login (officers/operators)', () => {
     expect(wrongPassword.body.message).toBe(unknownId.body.message);
   });
 
+  test('correct credentials but the wrong role selected on the form is rejected, naming the real role', async () => {
+    const { app, pool } = setup();
+    await insertEmployee(pool, { employeeId: 'DO-001', password: 'correct-horse', role: 'district_officer', district: 'Medak' });
+
+    const agent = request.agent(app);
+    const res = await agent.post('/api/auth/login').send({ employeeId: 'DO-001', password: 'correct-horse', role: 'centre_officer' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.status).toBe('ROLE_MISMATCH');
+    expect(res.body.message).toBe('DO-001 is a district officer account. Select District officer to continue.');
+
+    // Not logged in -- no session was established.
+    const me = await agent.get('/api/auth/me');
+    expect(me.status).toBe(401);
+  });
+
+  test('selecting the matching role logs in as usual', async () => {
+    const { app, pool } = setup();
+    const centreId = await insertCentre(pool);
+    await insertEmployee(pool, { employeeId: 'CO-100', password: 'correct-horse', role: 'centre_officer', centreId });
+
+    const res = await request(app).post('/api/auth/login').send({ employeeId: 'CO-100', password: 'correct-horse', role: 'centre_officer' });
+    expect(res.status).toBe(200);
+    expect(res.body.role).toBe('centre_officer');
+  });
+
   describe('lockout after repeated failed attempts', () => {
     test('the 11th failed attempt within the window is locked out, not just another 401', async () => {
       const { app, pool } = setup();

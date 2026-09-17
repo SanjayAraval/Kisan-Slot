@@ -20,8 +20,25 @@ const { isLockedOut, recordFailedLoginAttempt, clearFailedLoginAttempts } = requ
 
 const DEMO_EMPLOYEE_ROLES = ['centre_officer', 'district_officer', 'operator'];
 
+// For the role-mismatch message on /login -- the account's actual role
+// (never the form) still decides everything else; this is purely so the
+// error can name what the picked-wrong employee ID actually is.
+const EMPLOYEE_ROLE_LABELS = {
+  centre_officer: 'centre officer',
+  district_officer: 'district officer',
+  operator: 'assisted operator',
+};
+
 function isNonEmptyString(v) {
   return typeof v === 'string' && v.length > 0;
+}
+
+function withIndefiniteArticle(label) {
+  return `${/^[aeiou]/i.test(label) ? 'an' : 'a'} ${label}`;
+}
+
+function capitalize(s) {
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 function createAuthRoutes(pool) {
@@ -131,7 +148,7 @@ function createAuthRoutes(pool) {
   // this route (mobile OTP instead), so this is the only login surface
   // worth brute-forcing.
   router.post('/login', async (req, res, next) => {
-    const { employeeId, password } = req.body || {};
+    const { employeeId, password, role } = req.body || {};
     if (!isNonEmptyString(employeeId) || !isNonEmptyString(password)) {
       return res.status(400).json({ status: 'BAD_REQUEST', message: 'employeeId and password are required' });
     }
@@ -155,6 +172,17 @@ function createAuthRoutes(pool) {
       if (!emp || !(await verifyPassword(password, emp.password_hash))) {
         recordFailedLoginAttempt(employeeId);
         return res.status(401).json({ status: 'UNAUTHORIZED', message: 'invalid employee ID or password' });
+      }
+
+      // The role picked on the login form is only ever used for this
+      // feedback -- emp.role from the account is what actually gets
+      // signed into the token below, whether or not this check fires.
+      if (isNonEmptyString(role) && role !== emp.role) {
+        const actualLabel = EMPLOYEE_ROLE_LABELS[emp.role] || emp.role;
+        return res.status(400).json({
+          status: 'ROLE_MISMATCH',
+          message: `${employeeId} is ${withIndefiniteArticle(actualLabel)} account. Select ${capitalize(actualLabel)} to continue.`,
+        });
       }
 
       clearFailedLoginAttempts(employeeId);
