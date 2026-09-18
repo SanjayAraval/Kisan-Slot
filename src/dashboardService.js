@@ -207,6 +207,25 @@ async function releaseBags(client, centreId, date, additionalBags) {
   );
 
   const capacity = await computeCentreDayCapacity(client, centreId, date);
+
+  // Adding gunny bags doesn't guarantee the centre clears overbooking --
+  // the min() across constraints (see CLAUDE.md) means a different input
+  // cut earlier (hamali gangs, trucks, yard space) can still cap capacity
+  // below bags already booked. Persisting that recomputed, still-too-low
+  // bags_capacity would trip centre_day's bags_booked <= bags_capacity
+  // check and 500. Deferring the excess bookings -- not releasing more
+  // bags -- is what resolves that, so surface it instead of crashing.
+  const centreDayResult = await client.query('SELECT bags_booked FROM centre_day WHERE centre_id = $1 AND service_date = $2', [centreId, date]);
+  const bagsBooked = centreDayResult.rows[0] ? Number(centreDayResult.rows[0].bags_booked) : 0;
+  if (bagsBooked > capacity.bagsCapacity) {
+    return {
+      type: 'STILL_OVERBOOKED',
+      message: 'recomputed capacity is still below bags already booked; run nightly reallocation to defer the excess bookings before releasing more bags',
+      bagsBooked,
+      bagsCapacity: capacity.bagsCapacity,
+    };
+  }
+
   await upsertCentreDay(client, centreId, date, capacity);
 
   return {

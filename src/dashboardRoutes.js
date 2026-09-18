@@ -56,7 +56,7 @@ function createDashboardRoutes(pool) {
     client.release();
 
     if (result.type !== 'OK') {
-      const httpStatus = result.type === 'NOT_FOUND' ? 404 : 500;
+      const httpStatus = { NOT_FOUND: 404, STILL_OVERBOOKED: 409 }[result.type] || 500;
       return res.status(httpStatus).json({ status: result.type, message: result.message });
     }
     const { type, ...responseBody } = result;

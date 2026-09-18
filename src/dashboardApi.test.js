@@ -156,6 +156,36 @@ describe('POST /api/dashboard/centres/:id/release-bags', () => {
 
     expect(res.status).toBe(400);
   });
+
+  test('409s with a clear message instead of crashing when the centre is still overbooked after the release', async () => {
+    const { app, agent, pool } = setup();
+    const centreId = await insertCentre(pool);
+
+    // Declared at the baseline (hamali binds at 60 trucks/day) and fully
+    // booked against it -- 48 bookable trucks * 100 bags/truck = 4800.
+    await insertDailyInputs(pool, { centreId, serviceDate: DATE });
+    await insertCentreDay(pool, { centreId, serviceDate: DATE, bagsCapacity: 4800, bagsBooked: 4800 });
+
+    // Inputs get cut (hamali gangs down to 1 -> 6 trucks/day) without the
+    // bookings being deferred yet -- centre_day is now stale relative to
+    // centre_daily_inputs, same as after a declaration edit the nightly
+    // reallocation hasn't caught up to.
+    await pool.query('UPDATE centre_daily_inputs SET hamali_gang_count = 1 WHERE centre_id = $1 AND service_date = $2', [centreId, DATE]);
+
+    const res = await agent
+      .post(`/api/dashboard/centres/${centreId}/release-bags`)
+      .send({ date: DATE, additionalBags: 50 });
+
+    expect(res.status).toBe(409);
+    expect(res.body.status).toBe('STILL_OVERBOOKED');
+    expect(res.body.message).toMatch(/nightly reallocation/);
+
+    // centre_day's own bags_booked <= bags_capacity check is never
+    // reached -- the still-too-low recomputed capacity was caught and
+    // reported before upsertCentreDay tried to persist it.
+    const centreDay = await pool.query('SELECT bags_capacity FROM centre_day WHERE centre_id = $1 AND service_date = $2', [centreId, DATE]);
+    expect(Number(centreDay.rows[0].bags_capacity)).toBe(4800);
+  });
 });
 
 // Sanity check that DAILY_INPUT_BASELINE still matches the assumptions
