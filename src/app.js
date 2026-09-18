@@ -65,6 +65,12 @@ const CSP_SCRIPT_SOURCES = ["'self'", "'unsafe-inline'", 'https://unpkg.com', 'h
 // a service worker's fetches are governed by the CSP its own script was
 // served with, same as the page that registered it).
 const CSP_CONNECT_SOURCES = ["'self'", 'https://api.open-meteo.com', 'https://unpkg.com', 'https://cdn.tailwindcss.com'];
+// helmet's default directives set script-src-attr to 'none', which -- unlike
+// script-src -- has no fallback to script-src's 'unsafe-inline': it blocks
+// inline onclick/oninput attributes outright. Every page in public/ (no
+// bundler) relies on those inline handlers, so it must be explicitly
+// allowed here.
+const CSP_SCRIPT_ATTR_SOURCES = ["'unsafe-inline'"];
 
 // Blanket protection against a client hammering any endpoint -- separate
 // from loginRateLimiter.js, which tracks failed /api/auth/login attempts
@@ -86,6 +92,7 @@ function createApp(pool, { now = todayInIST } = {}) {
         directives: {
           ...helmet.contentSecurityPolicy.getDefaultDirectives(),
           'script-src': CSP_SCRIPT_SOURCES,
+          'script-src-attr': CSP_SCRIPT_ATTR_SOURCES,
           'connect-src': CSP_CONNECT_SOURCES,
           'worker-src': ["'self'"],
         },
